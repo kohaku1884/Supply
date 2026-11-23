@@ -1,0 +1,635 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>消耗品 購入リスト</title>
+<style>
+:root{
+  --bg:#f5f6f8; --surface:#fff; --text:#1f2430; --muted:#6b7280; --line:#e3e6ec;
+  --accent:#2563eb; --accent-text:#fff; --warn:#c2410c; --warn-bg:#fff1e6; --good:#15803d; --good-bg:#e8f6ec;
+  --head:#f0f2f6; --shadow:0 1px 3px rgba(0,0,0,.08);
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --bg:#14161b; --surface:#1d2027; --text:#e8eaf0; --muted:#9aa3b2; --line:#2e333d;
+    --accent:#5b8cff; --accent-text:#0b1020; --warn:#ffa56b; --warn-bg:#3a2616; --good:#6fd18c; --good-bg:#16301f;
+    --head:#252932; --shadow:none;
+  }
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font:14px/1.5 -apple-system,BlinkMacSystemFont,"Hiragino Sans","Yu Gothic UI","Noto Sans JP",sans-serif}
+header.top{background:var(--surface);border-bottom:1px solid var(--line);padding:10px 16px;display:flex;flex-wrap:wrap;gap:8px 16px;align-items:center;position:sticky;top:0;z-index:20}
+h1{font-size:17px;margin:0}
+.tabs{display:flex;gap:4px;flex:1}
+.tabs button{border:0;background:none;color:var(--muted);padding:6px 12px;border-radius:8px;font:inherit;cursor:pointer}
+.tabs button[aria-selected=true]{background:var(--accent);color:var(--accent-text);font-weight:600}
+.tools{display:flex;gap:6px}
+main{padding:16px;max-width:1500px;margin:0 auto}
+.btn{border:1px solid var(--line);background:var(--surface);color:var(--text);padding:6px 12px;border-radius:8px;font:inherit;cursor:pointer;display:inline-block}
+.btn:hover{border-color:var(--accent)}
+.btn.primary{background:var(--accent);color:var(--accent-text);border-color:var(--accent);font-weight:600}
+.btn.danger{color:var(--warn)}
+.btn.sm{padding:2px 8px;font-size:12px}
+.bar{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;margin-bottom:12px}
+.bar label{display:flex;gap:6px;align-items:center;color:var(--muted)}
+.bar .spacer{flex:1}
+select,input,textarea{font:inherit;color:var(--text);background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:5px 8px}
+input:focus,select:focus{outline:2px solid var(--accent);outline-offset:-1px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow)}
+.scroll{overflow-x:auto}
+table{border-collapse:collapse;width:100%}
+th,td{padding:7px 10px;border-bottom:1px solid var(--line);text-align:left;white-space:nowrap;vertical-align:middle}
+th{background:var(--head);font-weight:600;font-size:12px;color:var(--muted);position:sticky;top:0}
+th.sortable{cursor:pointer;user-select:none}
+th.sortable:hover{color:var(--text)}
+td.r,th.r{text-align:right}
+tbody tr:hover{background:color-mix(in srgb,var(--accent) 5%,transparent)}
+tr.group td{background:var(--head);font-weight:600;color:var(--muted);font-size:12px}
+td input.num{width:78px;text-align:right}
+td input.qty{width:58px;text-align:right}
+td.name{font-weight:600}
+td.sticky,th.sticky{position:sticky;left:0;background:var(--surface);z-index:1}
+th.sticky{background:var(--head);z-index:2}
+.tag{display:inline-block;font-size:11px;font-weight:600;border-radius:999px;padding:0 7px;margin-left:6px;background:var(--head);color:var(--muted)}
+.tag.due{background:var(--warn-bg);color:var(--warn)}
+.pricey{color:var(--warn);border-color:var(--warn)}
+.good{color:var(--good);font-weight:600}
+.warn{color:var(--warn);font-weight:600}
+.muted{color:var(--muted)}
+.small{font-size:12px}
+.empty{padding:36px 16px;text-align:center;color:var(--muted)}
+.summary{padding:10px 14px;display:flex;gap:18px;flex-wrap:wrap;border-top:1px solid var(--line)}
+.summary b{font-size:16px}
+.stats-grid{display:grid;grid-template-columns:minmax(260px,380px) 1fr;gap:16px;align-items:start}
+@media (max-width:760px){.stats-grid{grid-template-columns:1fr}}
+.pie-wrap{padding:16px;display:flex;flex-direction:column;align-items:center;gap:12px}
+.pie-wrap svg{width:100%;max-width:240px;height:auto}
+.legend{width:100%;display:grid;gap:4px}
+.legend div{display:flex;align-items:center;gap:8px}
+.legend i{width:12px;height:12px;border-radius:3px;flex:none}
+.legend span.v{margin-left:auto;font-variant-numeric:tabular-nums}
+.period{display:flex;gap:4px}
+.period button{padding:5px 14px;border:1px solid var(--line);background:var(--surface);color:var(--text);cursor:pointer;font:inherit}
+.period button:first-child{border-radius:8px 0 0 8px}.period button:last-child{border-radius:0 8px 8px 0}
+.period button[aria-pressed=true]{background:var(--accent);color:var(--accent-text);border-color:var(--accent)}
+.range-label{font-weight:700;font-size:16px;min-width:11em;text-align:center}
+.total-big{font-size:22px;font-weight:700}
+dialog{border:1px solid var(--line);border-radius:14px;background:var(--surface);color:var(--text);padding:0;width:min(560px,94vw);box-shadow:0 10px 40px rgba(0,0,0,.3)}
+dialog::backdrop{background:rgba(0,0,0,.45)}
+dialog form,dialog .dlg{padding:18px}
+dialog h2{margin:0 0 12px;font-size:16px}
+.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px 12px}
+.form-grid .full{grid-column:1/-1}
+.form-grid label{display:flex;flex-direction:column;gap:3px;font-size:12px;color:var(--muted)}
+.form-grid input,.form-grid select{width:100%;color:var(--text);font-size:14px}
+.form-grid .inline{flex-direction:row;align-items:center;gap:8px;font-size:14px;color:var(--text)}
+.form-grid .inline input{width:auto}
+.cycle-row{display:flex;gap:6px;align-items:center}
+.cycle-row input{width:70px}
+.actions{display:flex;justify-content:flex-end;gap:8px;margin-top:16px}
+.hint{font-size:12px;color:var(--muted);margin:2px 0 0}
+.hint.good{color:var(--good)}
+@media (max-width:600px){.form-grid{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<header class="top">
+  <h1>🛒 消耗品 購入リスト</h1>
+  <nav class="tabs" role="tablist">
+    <button role="tab" data-tab="list">購入リスト</button>
+    <button role="tab" data-tab="items">品目・履歴</button>
+    <button role="tab" data-tab="stats">集計</button>
+  </nav>
+  <div class="tools">
+    <button class="btn sm" id="exportBtn" title="データをJSONファイルで保存">書き出し</button>
+    <label class="btn sm" title="書き出したJSONを読み込み">読み込み<input type="file" id="importFile" accept="application/json,.json" hidden></label>
+  </div>
+</header>
+<main id="app"></main>
+
+<datalist id="catList"></datalist>
+<datalist id="placeList"></datalist>
+
+<!-- 品目 追加/編集 -->
+<dialog id="itemDlg">
+  <form id="itemForm" method="dialog">
+    <h2 id="itemDlgTitle">品目</h2>
+    <div class="form-grid">
+      <label class="full">品名<input name="name" required maxlength="60" placeholder="例：トイレットペーパー"></label>
+      <label>カテゴリ<input name="category" list="catList" maxlength="30" placeholder="例：日用品"></label>
+      <label>購入場所（業態・店舗名）<input name="place" list="placeList" maxlength="40" placeholder="例：スーパー / ファミリーマート"></label>
+      <label>単価（円）<input name="unitPrice" type="number" min="0" step="any" inputmode="decimal"></label>
+      <label>数量<input name="qty" type="number" min="0" step="any" inputmode="decimal" value="1"></label>
+      <label class="full">購入サイクル
+        <span class="cycle-row">
+          <select name="cycleUnit">
+            <option value="none">なし（手動で追加）</option>
+            <option value="day">日</option>
+            <option value="week">週</option>
+            <option value="month">月</option>
+            <option value="year">年</option>
+          </select>
+          <span id="cycleEvery" style="display:inline-flex;gap:6px;align-items:center">
+            <input name="cycleN" type="number" min="1" step="1" value="1"><span id="cycleWords" class="muted">ごとに1回</span>
+          </span>
+        </span>
+        <span class="hint" id="cyclePreview"></span>
+      </label>
+      <label class="inline full"><input type="checkbox" name="onList" checked>今すぐ購入リストに入れる</label>
+    </div>
+    <div class="actions">
+      <button type="button" class="btn" data-close>キャンセル</button>
+      <button class="btn primary" value="ok">保存</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- 購入記録 -->
+<dialog id="buyDlg">
+  <form id="buyForm" method="dialog">
+    <h2 id="buyDlgTitle">購入を記録</h2>
+    <div class="form-grid">
+      <label>購入日<input name="date" type="date" required></label>
+      <label>購入場所<input name="place" list="placeList" required maxlength="40"></label>
+      <label>単価（円）<input name="unitPrice" type="number" min="0" step="any" required inputmode="decimal"></label>
+      <label>数量<input name="qty" type="number" min="0.01" step="any" required inputmode="decimal"></label>
+      <div class="full">
+        <p class="hint" id="buyRef"></p>
+        <p class="hint" id="buyCompare"></p>
+      </div>
+    </div>
+    <div class="actions">
+      <button type="button" class="btn" data-close>キャンセル</button>
+      <button class="btn primary" value="ok">記録する</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- 履歴 -->
+<dialog id="histDlg">
+  <div class="dlg">
+    <h2 id="histTitle">購入履歴</h2>
+    <div class="scroll" id="histBody"></div>
+    <div class="actions">
+      <button class="btn" id="histAdd">過去の購入を追加</button>
+      <button class="btn primary" data-close>閉じる</button>
+    </div>
+  </div>
+</dialog>
+
+<script>
+'use strict';
+/* ========= 基本ユーティリティ ========= */
+const KEY = 'supply-tracker-v1';
+const $ = (s, r = document) => r.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const uid = () => (crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2));
+const fmtNum = n => Number(n).toLocaleString('ja-JP', { maximumFractionDigits: 2 });
+const yen = n => (n == null ? '—' : '¥' + fmtNum(n));
+const pad = n => String(n).padStart(2, '0');
+const toISO = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+const fromISO = s => { const [y, m, d] = s.split('-').map(Number); return new Date(y, m - 1, d); };
+const today = () => toISO(new Date());
+const diffDays = (a, b) => Math.round((fromISO(b) - fromISO(a)) / 864e5);
+const WD = ['日', '月', '火', '水', '木', '金', '土'];
+const fmtDate = s => { if (!s) return '—'; const d = fromISO(s); return `${d.getFullYear()}/${pad(d.getMonth() + 1)}/${pad(d.getDate())}`; };
+
+function addUnits(iso, n, unit) {
+  const d = fromISO(iso);
+  if (unit === 'day') d.setDate(d.getDate() + n);
+  else if (unit === 'week') d.setDate(d.getDate() + 7 * n);
+  else {
+    const months = unit === 'month' ? n : 12 * n, day = d.getDate();
+    d.setDate(1); d.setMonth(d.getMonth() + months);
+    d.setDate(Math.min(day, new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate()));
+  }
+  return toISO(d);
+}
+
+/* ========= データ ========= */
+const DEFAULT_CATS = ['食品', '飲料', '調味料', '日用品', '洗剤・衛生', 'ペット', 'その他'];
+const DEFAULT_PLACES = ['コンビニ', 'スーパー', 'ドラッグストア', 'ホームセンター', 'ネット通販', 'ファミリーマート', 'セブン-イレブン', 'ローソン'];
+
+function load() {
+  try {
+    const s = JSON.parse(localStorage.getItem(KEY));
+    if (s && Array.isArray(s.items) && Array.isArray(s.purchases)) return { ui: {}, ...s };
+  } catch (e) { /* ignore */ }
+  return { items: [], purchases: [], ui: {} };
+}
+let state = load();
+const ui = Object.assign({ tab: 'list', sortKey: 'category', sortDir: 1, group: 'none', period: 'month', anchor: today() }, state.ui);
+function save() {
+  state.ui = { tab: ui.tab, sortKey: ui.sortKey, sortDir: ui.sortDir, group: ui.group, period: ui.period };
+  try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) { alert('保存できませんでした（ブラウザの保存領域がいっぱいか、無効です）'); }
+}
+
+/* ========= 計算 ========= */
+const UNIT_JA = { day: '日', week: '週間', month: 'ヶ月', year: '年' };
+function cycleLabel(it) {
+  if (!it.cycleUnit || it.cycleUnit === 'none') return '—';
+  const n = it.cycleN || 1;
+  if (n === 1) return { day: '毎日', week: '週1回', month: '月1回', year: '年1回' }[it.cycleUnit];
+  return `${n}${UNIT_JA[it.cycleUnit]}に1回`;
+}
+function statsFor(item) {
+  let last = null, low = null, count = 0;
+  for (const p of state.purchases) {
+    if (p.itemId !== item.id) continue;
+    count++;
+    if (!last || p.date >= last.date) last = p;
+    if (!low || p.unitPrice < low.unitPrice || (p.unitPrice === low.unitPrice && p.date >= low.date)) low = p;
+  }
+  return { last, low, count };
+}
+function nextDue(item, st) {
+  if (!item.cycleUnit || item.cycleUnit === 'none') return null;
+  const base = [st.last && st.last.date, item.skipDate].filter(Boolean).sort().pop();
+  return base ? addUnits(base, item.cycleN || 1, item.cycleUnit) : null;
+}
+function listRows() {
+  const t = today(), rows = [];
+  for (const item of state.items) {
+    const st = statsFor(item), due = nextDue(item, st);
+    const isDue = !!due && due <= t;
+    if (!item.onList && !isDue) continue;
+    rows.push({ item, st, due, isDue, auto: isDue && !item.onList, elapsed: st.last ? diffDays(st.last.date, t) : null });
+  }
+  return rows;
+}
+
+/* ========= 並べ替え ========= */
+const SORTS = {
+  name:     { label: '品名',           get: r => r.item.name },
+  category: { label: 'カテゴリ',       get: r => r.item.category },
+  place:    { label: '購入場所',       get: r => r.item.place },
+  price:    { label: '単価',           get: r => r.item.unitPrice },
+  elapsed:  { label: '経過日数',       get: r => r.elapsed },
+  last:     { label: '前回購入日',     get: r => r.st.last && r.st.last.date },
+  lastPrice:{ label: '前回購入価格',   get: r => r.st.last && r.st.last.unitPrice },
+  low:      { label: '最安値',         get: r => r.st.low && r.st.low.unitPrice },
+  next:     { label: '次回予定日',     get: r => r.due },
+};
+function cmpBy(key, dir) {
+  const g = SORTS[key].get;
+  return (a, b) => {
+    const x = g(a), y = g(b), xe = x == null || x === '', ye = y == null || y === '';
+    if (xe || ye) return xe && ye ? 0 : xe ? 1 : -1; // 空欄は常に最後
+    const c = typeof x === 'number' && typeof y === 'number' ? x - y : String(x).localeCompare(String(y), 'ja');
+    return c * dir;
+  };
+}
+
+/* ========= 描画 ========= */
+const app = $('#app');
+function render() {
+  document.querySelectorAll('.tabs button').forEach(b => b.setAttribute('aria-selected', b.dataset.tab === ui.tab));
+  const cats = [...new Set([...DEFAULT_CATS, ...state.items.map(i => i.category).filter(Boolean)])];
+  const places = [...new Set([...DEFAULT_PLACES, ...state.items.map(i => i.place), ...state.purchases.map(p => p.place)].filter(Boolean))];
+  $('#catList').innerHTML = cats.map(c => `<option value="${esc(c)}">`).join('');
+  $('#placeList').innerHTML = places.map(c => `<option value="${esc(c)}">`).join('');
+  if (ui.tab === 'list') renderList(); else if (ui.tab === 'items') renderItems(); else renderStats();
+}
+
+function emptyState() {
+  return `<div class="card empty">
+    <p>まだ品目がありません。「品目を追加」から登録するか、サンプルデータで試せます。</p>
+    <button class="btn primary" data-act="new">品目を追加</button>
+    <button class="btn" data-act="sample">サンプルデータを入れる</button></div>`;
+}
+
+function renderList() {
+  if (!state.items.length) { app.innerHTML = emptyState(); return; }
+  const rows = listRows();
+  rows.sort(cmpBy(ui.sortKey, ui.sortDir));
+  const th = (key, label, cls = '') => {
+    const mark = ui.sortKey === key ? (ui.sortDir > 0 ? ' ▲' : ' ▼') : '';
+    return `<th class="sortable ${cls}" data-sort="${key}">${label}${mark}</th>`;
+  };
+  const rowHtml = r => {
+    const { item, st } = r, low = st.low, last = st.last;
+    const pricey = low && item.unitPrice > low.unitPrice;
+    const nextTxt = r.due ? `<div class="small ${r.isDue ? 'warn' : 'muted'}">次回 ${fmtDate(r.due).slice(5)}</div>` : '';
+    const elapsed = r.elapsed == null ? '—'
+      : `<span class="${r.isDue ? 'warn' : ''}">${r.elapsed}日</span>`;
+    return `<tr data-id="${item.id}">
+      <td><button class="btn primary sm" data-act="buy" data-id="${item.id}">購入</button></td>
+      <td class="name sticky">${esc(item.name)}${r.isDue ? '<span class="tag due">サイクル</span>' : ''}</td>
+      <td class="r"><input class="num ${pricey ? 'pricey' : ''}" type="number" min="0" step="any" data-field="unitPrice" data-id="${item.id}" value="${item.unitPrice ?? ''}" title="${pricey ? `最安値より +${fmtNum(item.unitPrice - low.unitPrice)}円` : ''}"></td>
+      <td class="r"><input class="qty" type="number" min="0" step="any" data-field="qty" data-id="${item.id}" value="${item.qty ?? 1}"></td>
+      <td>${esc(item.category) || '—'}</td>
+      <td>${esc(item.place) || '—'}</td>
+      <td>${cycleLabel(item)}${nextTxt}</td>
+      <td>${fmtDate(last && last.date)}</td>
+      <td class="r">${elapsed}</td>
+      <td class="r">${yen(last && last.unitPrice)}</td>
+      <td>${esc(last && last.place) || '—'}</td>
+      <td class="r">${low ? `<span class="good">${yen(low.unitPrice)}</span>` : '—'}</td>
+      <td>${esc(low && low.place) || '—'}</td>
+      <td>${fmtDate(low && low.date)}</td>
+      <td><button class="btn sm" data-act="skip" data-id="${item.id}" title="今回はリストから外す（サイクル品は次の周期まで再表示されません）">外す</button></td>
+    </tr>`;
+  };
+  const COLS = 15;
+  let body = '';
+  if (!rows.length) body = `<tr><td colspan="${COLS}" class="empty">購入リストは空です。「品目・履歴」から品目をリストに追加できます。</td></tr>`;
+  else if (ui.group === 'none') body = rows.map(rowHtml).join('');
+  else {
+    const gk = ui.group, groups = new Map();
+    rows.forEach(r => { const k = r.item[gk] || '未設定'; if (!groups.has(k)) groups.set(k, []); groups.get(k).push(r); });
+    const keys = [...groups.keys()].sort((a, b) => (a === '未設定') - (b === '未設定') || a.localeCompare(b, 'ja'));
+    body = keys.map(k => `<tr class="group"><td colspan="${COLS}">${gk === 'category' ? 'カテゴリ' : '購入場所'}：${esc(k)}（${groups.get(k).length}件）</td></tr>` + groups.get(k).map(rowHtml).join('')).join('');
+  }
+  const sortOpts = Object.entries(SORTS).map(([k, v]) => `<option value="${k}" ${ui.sortKey === k ? 'selected' : ''}>${v.label}</option>`).join('');
+  app.innerHTML = `
+    <div class="bar">
+      <button class="btn primary" data-act="new">＋ 品目を追加</button>
+      <label>並べ替え <select id="sortKey">${sortOpts}</select>
+        <button class="btn sm" id="sortDir" title="昇順/降順">${ui.sortDir > 0 ? '昇順 ▲' : '降順 ▼'}</button></label>
+      <label>グループ表示 <select id="groupBy">
+        <option value="none" ${ui.group === 'none' ? 'selected' : ''}>なし</option>
+        <option value="category" ${ui.group === 'category' ? 'selected' : ''}>カテゴリ別</option>
+        <option value="place" ${ui.group === 'place' ? 'selected' : ''}>購入場所別</option></select></label>
+    </div>
+    <div class="card">
+      <div class="scroll"><table>
+        <thead><tr><th></th>${th('name', '品名', 'sticky')}${th('price', '単価', 'r')}<th class="r">数量</th>${th('category', 'カテゴリ')}${th('place', '購入場所')}
+          ${th('next', '購入サイクル')}${th('last', '前回購入日')}${th('elapsed', '経過日数', 'r')}${th('lastPrice', '前回購入価格', 'r')}<th>前回購入場所</th>
+          ${th('low', '最安値', 'r')}<th>最安値の購入場所</th><th>最安値の購入日</th><th></th></tr></thead>
+        <tbody>${body}</tbody></table></div>
+      <div class="summary"><span>リスト <b>${rows.length}</b> 件</span><span>予定合計 <b id="planTotal">${yen(planTotal(rows))}</b></span></div>
+    </div>`;
+}
+const planTotal = rows => rows.reduce((s, r) => s + (r.item.unitPrice || 0) * (r.item.qty || 0), 0);
+
+function renderItems() {
+  if (!state.items.length) { app.innerHTML = emptyState(); return; }
+  const items = [...state.items].sort((a, b) => (a.category || '').localeCompare(b.category || '', 'ja') || a.name.localeCompare(b.name, 'ja'));
+  const t = today();
+  const rows = items.map(item => {
+    const st = statsFor(item), due = nextDue(item, st), inList = item.onList || (due && due <= t);
+    return `<tr>
+      <td class="name sticky">${esc(item.name)}</td><td>${esc(item.category) || '—'}</td><td>${esc(item.place) || '—'}</td>
+      <td class="r">${yen(item.unitPrice)}</td><td class="r">${fmtNum(item.qty ?? 1)}</td><td>${cycleLabel(item)}</td>
+      <td class="r">${st.count}</td><td>${fmtDate(st.last && st.last.date)}</td><td class="r">${st.low ? yen(st.low.unitPrice) : '—'}</td>
+      <td>${inList ? '<span class="tag due">リスト中</span>' : `<button class="btn sm" data-act="addlist" data-id="${item.id}">リストに追加</button>`}</td>
+      <td><button class="btn sm" data-act="buy" data-id="${item.id}" data-mode="direct">購入記録</button>
+          <button class="btn sm" data-act="hist" data-id="${item.id}">履歴</button>
+          <button class="btn sm" data-act="edit" data-id="${item.id}">編集</button>
+          <button class="btn sm danger" data-act="del" data-id="${item.id}">削除</button></td></tr>`;
+  }).join('');
+  app.innerHTML = `
+    <div class="bar"><button class="btn primary" data-act="new">＋ 品目を追加</button></div>
+    <div class="card"><div class="scroll"><table>
+      <thead><tr><th class="sticky">品名</th><th>カテゴリ</th><th>購入場所</th><th class="r">単価</th><th class="r">数量</th><th>購入サイクル</th>
+      <th class="r">購入回数</th><th>前回購入日</th><th class="r">最安値</th><th>状態</th><th></th></tr></thead>
+      <tbody>${rows}</tbody></table></div></div>`;
+}
+
+/* ===== 集計 ===== */
+const PALETTE = ['#3b82f6', '#f59e0b', '#10b981', '#ef4444', '#8b5cf6', '#06b6d4', '#ec4899', '#84cc16', '#f97316', '#64748b'];
+function rangeOf(period, anchor) {
+  const d = fromISO(anchor), y = d.getFullYear(), m = d.getMonth() + 1;
+  if (period === 'day') return { s: anchor, e: anchor, label: `${y}年${m}月${d.getDate()}日（${WD[d.getDay()]}）` };
+  if (period === 'week') {
+    const s = addUnits(anchor, -((d.getDay() + 6) % 7), 'day'), e = addUnits(s, 6, 'day'), sd = fromISO(s), ed = fromISO(e);
+    return { s, e, label: `${sd.getFullYear()}年${sd.getMonth() + 1}月${sd.getDate()}日〜${sd.getMonth() === ed.getMonth() ? '' : (ed.getMonth() + 1) + '月'}${ed.getDate()}日` };
+  }
+  if (period === 'month') return { s: `${y}-${pad(m)}-01`, e: toISO(new Date(y, m, 0)), label: `${y}年${m}月` };
+  return { s: `${y}-01-01`, e: `${y}-12-31`, label: `${y}年` };
+}
+function pieSvg(slices, total) {
+  const R = 90, C = 100;
+  if (slices.length === 1) return `<svg viewBox="0 0 200 200" role="img" aria-label="カテゴリ別購入価格の円グラフ"><circle cx="${C}" cy="${C}" r="${R}" fill="${slices[0].color}"><title>${esc(slices[0].name)} ${yen(slices[0].value)}</title></circle></svg>`;
+  let a0 = -Math.PI / 2;
+  const paths = slices.map(s => {
+    const a1 = a0 + (s.value / total) * Math.PI * 2, large = a1 - a0 > Math.PI ? 1 : 0;
+    const p = `M${C},${C} L${C + R * Math.cos(a0)},${C + R * Math.sin(a0)} A${R},${R} 0 ${large} 1 ${C + R * Math.cos(a1)},${C + R * Math.sin(a1)} Z`;
+    a0 = a1;
+    return `<path d="${p}" fill="${s.color}" stroke="var(--surface)" stroke-width="2"><title>${esc(s.name)} ${yen(s.value)}（${(s.value / total * 100).toFixed(1)}%）</title></path>`;
+  }).join('');
+  return `<svg viewBox="0 0 200 200" role="img" aria-label="カテゴリ別購入価格の円グラフ">${paths}</svg>`;
+}
+function renderStats() {
+  const { s, e, label } = rangeOf(ui.period, ui.anchor);
+  const ps = state.purchases.filter(p => p.date >= s && p.date <= e);
+  const itemById = Object.fromEntries(state.items.map(i => [i.id, i]));
+  const total = ps.reduce((a, p) => a + p.unitPrice * p.qty, 0);
+  const catSum = new Map(), itemAgg = new Map();
+  for (const p of ps) {
+    const it = itemById[p.itemId]; if (!it) continue;
+    const cat = it.category || '未設定', amt = p.unitPrice * p.qty;
+    catSum.set(cat, (catSum.get(cat) || 0) + amt);
+    const a = itemAgg.get(it.id) || { it, count: 0, qty: 0, sum: 0, places: new Set(), last: '' };
+    a.count++; a.qty += p.qty; a.sum += amt; a.places.add(p.place); if (p.date > a.last) a.last = p.date;
+    itemAgg.set(it.id, a);
+  }
+  const allCats = [...new Set(state.items.map(i => i.category || '未設定'))].sort((a, b) => a.localeCompare(b, 'ja'));
+  const slices = [...catSum].map(([name, value]) => ({ name, value, color: PALETTE[allCats.indexOf(name) % PALETTE.length] })).sort((a, b) => b.value - a.value);
+  const pb = (k, l) => `<button data-period="${k}" aria-pressed="${ui.period === k}">${l}</button>`;
+  const itemRows = [...itemAgg.values()].sort((a, b) => b.sum - a.sum).map(a => `<tr>
+    <td class="name">${esc(a.it.name)}</td><td>${esc(a.it.category) || '—'}</td><td class="r">${a.count}</td><td class="r">${fmtNum(a.qty)}</td>
+    <td class="r"><b>${yen(a.sum)}</b></td><td class="r">${yen(a.sum / a.qty)}</td><td>${esc([...a.places].join('、'))}</td><td>${fmtDate(a.last)}</td></tr>`).join('');
+  app.innerHTML = `
+    <div class="bar">
+      <div class="period">${pb('day', '日')}${pb('week', '週')}${pb('month', '月')}${pb('year', '年')}</div>
+      <button class="btn" data-nav="-1">◀</button><span class="range-label">${label}</span><button class="btn" data-nav="1">▶</button>
+      <button class="btn sm" data-nav="0">今日</button>
+    </div>
+    <div class="stats-grid">
+      <section class="card pie-wrap">
+        <div class="muted small">カテゴリ別 購入価格</div>
+        <div class="total-big">${yen(total)}</div>
+        ${slices.length ? pieSvg(slices, total) + `<div class="legend">${slices.map(sl => `<div><i style="background:${sl.color}"></i>${esc(sl.name)}<span class="v">${yen(sl.value)}（${(sl.value / total * 100).toFixed(1)}%）</span></div>`).join('')}</div>` : '<p class="muted">この期間の購入はありません</p>'}
+      </section>
+      <section class="card">
+        <div class="scroll"><table>
+          <thead><tr><th>品名</th><th>カテゴリ</th><th class="r">購入回数</th><th class="r">数量</th><th class="r">合計金額</th><th class="r">平均単価</th><th>購入場所</th><th>最終購入日</th></tr></thead>
+          <tbody>${itemRows || `<tr><td colspan="8" class="empty">この期間の購入はありません</td></tr>`}</tbody></table></div>
+      </section>
+    </div>`;
+}
+
+/* ========= ダイアログ ========= */
+const itemDlg = $('#itemDlg'), itemForm = $('#itemForm'), buyDlg = $('#buyDlg'), buyForm = $('#buyForm'), histDlg = $('#histDlg');
+document.querySelectorAll('dialog [data-close]').forEach(b => b.addEventListener('click', () => b.closest('dialog').close()));
+let editingId = null, buyCtx = null, histId = null;
+
+function updateCycleUi() {
+  const u = itemForm.cycleUnit.value, n = Math.max(1, parseInt(itemForm.cycleN.value) || 1);
+  $('#cycleEvery').style.display = u === 'none' ? 'none' : 'inline-flex';
+  $('#cycleWords').textContent = { day: '日ごとに1回', week: '週間ごとに1回', month: 'ヶ月ごとに1回', year: '年ごとに1回' }[u] || '';
+  $('#cyclePreview').textContent = u === 'none' ? 'サイクルを設定すると、期日になったとき自動で購入リストに載ります' : `→ ${cycleLabel({ cycleUnit: u, cycleN: n })}（期日になると自動で購入リストに載ります）`;
+}
+itemForm.cycleUnit.addEventListener('change', updateCycleUi);
+itemForm.cycleN.addEventListener('input', updateCycleUi);
+
+function openItemDlg(id) {
+  editingId = id;
+  const it = id ? state.items.find(i => i.id === id) : { qty: 1, cycleUnit: 'none', cycleN: 1, onList: true };
+  $('#itemDlgTitle').textContent = id ? '品目を編集' : '品目を追加';
+  itemForm.name.value = it.name || ''; itemForm.category.value = it.category || ''; itemForm.place.value = it.place || '';
+  itemForm.unitPrice.value = it.unitPrice ?? ''; itemForm.qty.value = it.qty ?? 1;
+  itemForm.cycleUnit.value = it.cycleUnit || 'none'; itemForm.cycleN.value = it.cycleN || 1;
+  itemForm.onList.checked = !!it.onList;
+  updateCycleUi(); itemDlg.showModal();
+}
+itemForm.addEventListener('submit', ev => {
+  if (ev.submitter && ev.submitter.value !== 'ok') return;
+  const f = itemForm, num = v => (v === '' ? null : Math.max(0, parseFloat(v)));
+  const data = {
+    name: f.name.value.trim(), category: f.category.value.trim(), place: f.place.value.trim(),
+    unitPrice: num(f.unitPrice.value), qty: num(f.qty.value) ?? 1,
+    cycleUnit: f.cycleUnit.value, cycleN: Math.max(1, parseInt(f.cycleN.value) || 1), onList: f.onList.checked,
+  };
+  if (!data.name) return;
+  if (editingId) Object.assign(state.items.find(i => i.id === editingId), data);
+  else state.items.push({ id: uid(), skipDate: null, ...data });
+  save(); render();
+});
+
+function openBuyDlg(id, mode) { // mode: 'list'(リストから購入) | 'direct' | 'past'
+  const it = state.items.find(i => i.id === id), st = statsFor(it);
+  buyCtx = { id, mode };
+  $('#buyDlgTitle').textContent = `${mode === 'past' ? '過去の購入を追加' : '購入を記録'}：${it.name}`;
+  buyForm.date.value = today(); buyForm.date.max = today();
+  buyForm.place.value = it.place || (st.last && st.last.place) || '';
+  buyForm.unitPrice.value = it.unitPrice ?? ''; buyForm.qty.value = it.qty ?? 1;
+  $('#buyRef').textContent = st.last ? `前回：${fmtDate(st.last.date)} ${st.last.place} ${yen(st.last.unitPrice)}` : '購入履歴はまだありません';
+  updateBuyCompare(); buyDlg.showModal();
+}
+function updateBuyCompare() {
+  const it = state.items.find(i => i.id === buyCtx.id), low = statsFor(it).low, el = $('#buyCompare');
+  const v = parseFloat(buyForm.unitPrice.value);
+  el.className = 'hint';
+  if (!low) { el.textContent = ''; return; }
+  const base = `最安値：${yen(low.unitPrice)}（${low.place}・${fmtDate(low.date)}）`;
+  if (isNaN(v)) el.textContent = base;
+  else if (v < low.unitPrice) { el.textContent = `${base} → 最安値を更新します 🎉`; el.className = 'hint good'; }
+  else if (v > low.unitPrice) el.textContent = `${base} → 最安値より ${fmtNum(v - low.unitPrice)}円 高い`;
+  else el.textContent = `${base} → 最安値タイ`;
+}
+buyForm.unitPrice.addEventListener('input', updateBuyCompare);
+buyForm.addEventListener('submit', ev => {
+  if (ev.submitter && ev.submitter.value !== 'ok') return;
+  const f = buyForm, unitPrice = parseFloat(f.unitPrice.value), qty = parseFloat(f.qty.value), place = f.place.value.trim();
+  if (!f.date.value || !place || isNaN(unitPrice) || isNaN(qty)) return;
+  state.purchases.push({ id: uid(), itemId: buyCtx.id, date: f.date.value, place, unitPrice, qty });
+  const it = state.items.find(i => i.id === buyCtx.id);
+  if (buyCtx.mode !== 'past') { // 通常の購入：リストから外し、次回の初期値を今回の内容にする
+    it.onList = false; it.unitPrice = unitPrice; it.qty = qty; it.place = place;
+  }
+  save(); render(); if (histDlg.open) renderHist();
+});
+
+function renderHist() {
+  const it = state.items.find(i => i.id === histId), st = statsFor(it);
+  $('#histTitle').textContent = `購入履歴：${it.name}`;
+  const ps = state.purchases.filter(p => p.itemId === histId).sort((a, b) => b.date.localeCompare(a.date));
+  $('#histBody').innerHTML = ps.length ? `<table><thead><tr><th>購入日</th><th>購入場所</th><th class="r">単価</th><th class="r">数量</th><th class="r">小計</th><th></th></tr></thead><tbody>${
+    ps.map(p => `<tr><td>${fmtDate(p.date)}</td><td>${esc(p.place)}</td><td class="r">${yen(p.unitPrice)}${st.low && st.low.id === p.id ? ' <span class="good" title="最安値">★</span>' : ''}</td>
+      <td class="r">${fmtNum(p.qty)}</td><td class="r">${yen(p.unitPrice * p.qty)}</td>
+      <td><button class="btn sm danger" data-delp="${p.id}">削除</button></td></tr>`).join('')}</tbody></table>` : '<p class="empty">履歴はまだありません</p>';
+}
+$('#histBody').addEventListener('click', e => {
+  const id = e.target.dataset.delp;
+  if (!id || !confirm('この購入記録を削除しますか？')) return;
+  state.purchases = state.purchases.filter(p => p.id !== id);
+  save(); render(); renderHist();
+});
+$('#histAdd').addEventListener('click', () => openBuyDlg(histId, 'past'));
+
+/* ========= イベント ========= */
+document.querySelector('.tabs').addEventListener('click', e => {
+  const t = e.target.dataset.tab; if (!t) return;
+  ui.tab = t; save(); render();
+});
+app.addEventListener('click', e => {
+  const th = e.target.closest('th[data-sort]');
+  if (th) { const k = th.dataset.sort; if (ui.sortKey === k) ui.sortDir *= -1; else { ui.sortKey = k; ui.sortDir = 1; } save(); return render(); }
+  if (e.target.id === 'sortDir') { ui.sortDir *= -1; save(); return render(); }
+  const per = e.target.closest('[data-period]');
+  if (per) { ui.period = per.dataset.period; save(); return render(); }
+  const nav = e.target.closest('[data-nav]');
+  if (nav) { const n = +nav.dataset.nav; ui.anchor = n === 0 ? today() : addUnits(ui.anchor, n, ui.period); return render(); }
+  const b = e.target.closest('[data-act]'); if (!b) return;
+  const id = b.dataset.id, it = id && state.items.find(i => i.id === id);
+  switch (b.dataset.act) {
+    case 'new': openItemDlg(null); break;
+    case 'sample': loadSample(); break;
+    case 'edit': openItemDlg(id); break;
+    case 'buy': openBuyDlg(id, b.dataset.mode || 'list'); break;
+    case 'hist': histId = id; renderHist(); histDlg.showModal(); break;
+    case 'addlist': it.onList = true; it.skipDate = null; save(); render(); break;
+    case 'skip': it.onList = false; it.skipDate = today(); save(); render(); break;
+    case 'del':
+      if (confirm(`「${it.name}」と、その購入履歴をすべて削除しますか？`)) {
+        state.items = state.items.filter(i => i.id !== id); state.purchases = state.purchases.filter(p => p.itemId !== id); save(); render();
+      }
+      break;
+  }
+});
+app.addEventListener('change', e => {
+  if (e.target.id === 'sortKey') { ui.sortKey = e.target.value; save(); return render(); }
+  if (e.target.id === 'groupBy') { ui.group = e.target.value; save(); return render(); }
+  const f = e.target.dataset.field; if (!f) return;
+  const it = state.items.find(i => i.id === e.target.dataset.id), v = parseFloat(e.target.value);
+  if (isNaN(v) || v < 0) { e.target.value = it[f] ?? ''; return; }
+  it[f] = v; save();
+  const low = statsFor(it).low;
+  if (f === 'unitPrice') e.target.classList.toggle('pricey', !!low && v > low.unitPrice);
+  $('#planTotal').textContent = yen(planTotal(listRows())); // 入力欄のフォーカスを保つため全体再描画はしない
+});
+
+/* ========= 書き出し／読み込み ========= */
+$('#exportBtn').addEventListener('click', () => {
+  const blob = new Blob([JSON.stringify(state, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob); a.download = `supply-${today()}.json`; a.click(); URL.revokeObjectURL(a.href);
+});
+$('#importFile').addEventListener('change', async e => {
+  const file = e.target.files[0]; e.target.value = ''; if (!file) return;
+  try {
+    const d = JSON.parse(await file.text());
+    if (!Array.isArray(d.items) || !Array.isArray(d.purchases)) throw new Error('形式が違います');
+    if (!confirm('現在のデータを、読み込んだデータで置き換えます。よろしいですか？')) return;
+    state = { ui: {}, ...d }; save(); render();
+  } catch (err) { alert('読み込めませんでした：' + err.message); }
+});
+
+/* ========= サンプルデータ ========= */
+function loadSample() {
+  let seed = 7; const rnd = () => (seed = (seed * 9301 + 49297) % 233280) / 233280;
+  const defs = [
+    ['牛乳', '食品', ['スーパー', 'ファミリーマート'], 198, 1, 'week', 1],
+    ['卵', '食品', ['スーパー', 'ドラッグストア'], 238, 1, 'week', 1],
+    ['食パン', '食品', ['スーパー', 'セブン-イレブン'], 148, 1, 'week', 1],
+    ['ミネラルウォーター', '飲料', ['ファミリーマート', 'スーパー', 'ドラッグストア'], 108, 6, 'week', 2],
+    ['コーヒー豆', '飲料', ['スーパー', 'ネット通販'], 780, 1, 'month', 1],
+    ['トイレットペーパー', '日用品', ['ドラッグストア', 'ホームセンター', 'ネット通販'], 498, 1, 'month', 1],
+    ['ティッシュ', '日用品', ['ドラッグストア', 'スーパー'], 348, 1, 'month', 1],
+    ['洗濯洗剤', '洗剤・衛生', ['ドラッグストア', 'スーパー'], 398, 1, 'month', 2],
+    ['シャンプー', '洗剤・衛生', ['ドラッグストア', 'ネット通販'], 548, 1, 'month', 1],
+    ['ゴミ袋', '日用品', ['ホームセンター', 'ドラッグストア'], 298, 1, 'month', 3],
+  ];
+  const days = { day: 1, week: 7, month: 30, year: 365 }, t = today();
+  state = { items: [], purchases: [], ui: state.ui };
+  for (const [name, category, places, base, qty, unit, n] of defs) {
+    const item = { id: uid(), name, category, place: places[0], unitPrice: base, qty, cycleUnit: unit, cycleN: n, onList: false, skipDate: null };
+    state.items.push(item);
+    const step = days[unit] * n;
+    let ago = Math.round(step * (0.5 + rnd() * 0.9));
+    while (ago < 150) {
+      state.purchases.push({ id: uid(), itemId: item.id, date: addUnits(t, -ago, 'day'), place: places[Math.floor(rnd() * places.length)],
+        unitPrice: Math.round(base * (0.82 + rnd() * 0.36)), qty });
+      ago += Math.max(1, Math.round(step * (0.85 + rnd() * 0.3)));
+    }
+  }
+  save(); render();
+}
+
+render();
+</script>
+</body>
+</html>
