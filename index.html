@@ -130,7 +130,7 @@ tr.best td{background:var(--good-bg)}
   <h1>消耗品購入リスト</h1>
   <nav class="tabs" role="tablist">
     <button role="tab" data-tab="list">購入リスト</button>
-    <button role="tab" data-tab="items">品目・履歴</button>
+    <button role="tab" data-tab="items">品目リスト</button>
     <button role="tab" data-tab="compare">価格比較</button>
     <button role="tab" data-tab="stats">集計</button>
   </nav>
@@ -201,6 +201,24 @@ tr.best td{background:var(--good-bg)}
 </dialog>
 
 <!-- 履歴 -->
+<!-- 品目リストから購入リストへ追加 -->
+<dialog id="addDlg">
+  <form id="addForm" method="dialog">
+    <h2 id="addDlgTitle">購入リストに追加</h2>
+    <p class="hint" id="addSrc" style="margin:0 0 10px"></p>
+    <div class="form-grid">
+      <label class="full">購入場所<span class="combo" data-combo="place"><input name="place" maxlength="40" autocomplete="off"><button type="button" class="combo-btn" tabindex="-1" aria-label="過去の入力から選ぶ">▼</button></span></label>
+      <label>単価（円）<input name="unitPrice" type="number" min="0" step="any" inputmode="decimal"></label>
+      <label>数量<input name="qty" type="number" min="0" step="any" inputmode="decimal"></label>
+      <div class="full"><button type="button" class="btn sm" id="addUseLow" hidden></button></div>
+    </div>
+    <div class="actions">
+      <button type="button" class="btn" data-close>キャンセル</button>
+      <button class="btn primary" value="ok">購入リストに追加</button>
+    </div>
+  </form>
+</dialog>
+
 <dialog id="histDlg">
   <div class="dlg">
     <h2 id="histTitle">購入履歴</h2>
@@ -434,29 +452,43 @@ function totalsHtml(rows) {
 }
 const planTotal = rows => rows.reduce((s, r) => s + (r.item.unitPrice || 0) * (r.item.qty || 0), 0);
 
+/** 購入リストに載せるときの初期値：前回購入のデータを優先し、履歴がなければ品目の登録内容 */
+function prefillFor(item) {
+  const { last, low } = statsFor(item);
+  if (last) return { place: last.place, unitPrice: last.unitPrice, qty: last.qty, label: `前回購入（${fmtDate(last.date)}）のデータを自動入力しました`, low };
+  return { place: item.place || '', unitPrice: item.unitPrice ?? null, qty: item.qty ?? 1, label: '購入履歴がないため、品目の登録内容を入力しました', low: null };
+}
+function isInList(item, st) { const due = nextDue(item, st); return item.onList || !!(due && due <= today()); }
 function renderItems() {
   if (!state.items.length) { app.innerHTML = emptyState(); return; }
   const items = [...state.items].sort((a, b) => (a.category || '').localeCompare(b.category || '', 'ja') || a.name.localeCompare(b.name, 'ja'));
-  const t = today();
   const rows = items.map(item => {
-    const st = statsFor(item), due = nextDue(item, st), inList = item.onList || (due && due <= t);
+    const st = statsFor(item), inList = isInList(item, st), last = st.last;
     return `<tr>
-      <td class="name sticky">${esc(item.name)}</td><td>${esc(item.category) || '—'}</td><td>${esc(item.place) || '—'}</td>
-      <td class="r">${yen(item.unitPrice)}</td><td class="r">${fmtNum(item.qty ?? 1)}</td><td>${cycleLabel(item)}</td>
-      <td class="r">${st.count}</td><td>${fmtDate(st.last && st.last.date)}</td><td class="r">${st.low ? yen(st.low.unitPrice) : '—'}</td>
-      <td>${inList ? '<span class="tag due">リスト中</span>' : `<button class="btn sm" data-act="addlist" data-id="${item.id}">リストに追加</button>`}</td>
+      <td>${inList ? '' : `<input type="checkbox" data-pick="${item.id}" aria-label="${esc(item.name)}を選択">`}</td>
+      <td class="name sticky">${esc(item.name)}</td><td>${esc(item.category) || '—'}</td><td>${cycleLabel(item)}</td>
+      <td>${fmtDate(last && last.date)}</td><td>${esc(last && last.place) || '—'}</td><td class="r">${yen(last && last.unitPrice)}</td>
+      <td class="r">${st.low ? `<span class="good">${yen(st.low.unitPrice)}</span>` : '—'}</td><td class="r">${st.count}</td>
+      <td>${inList ? '<span class="tag due">リスト中</span>' : `<button class="btn sm primary" data-act="addlist" data-id="${item.id}">購入リストへ</button>`}</td>
       <td><button class="btn sm" data-act="buy" data-id="${item.id}" data-mode="direct">購入記録</button>
           <button class="btn sm" data-act="hist" data-id="${item.id}">履歴</button>
           <button class="btn sm" data-act="edit" data-id="${item.id}">編集</button>
           <button class="btn sm danger" data-act="del" data-id="${item.id}">削除</button></td></tr>`;
   }).join('');
   app.innerHTML = `
-    <div class="bar"><button class="btn primary" data-act="new">＋ 品目を追加</button></div>
+    <div class="bar"><button class="btn primary" data-act="new">＋ 品目を追加</button>
+      <button class="btn" data-act="bulkadd" id="bulkBtn" disabled>選択した品目を購入リストへ</button>
+      <span class="muted small">場所・単価・数量は前回購入のデータが自動で入ります（追加時に編集もできます）</span></div>
     <div class="card"><div class="scroll"><table>
-      <thead><tr><th class="sticky">品名</th><th>カテゴリ</th><th>購入場所</th><th class="r">単価</th><th class="r">数量</th><th>購入サイクル</th>
-      <th class="r">購入回数</th><th>前回購入日</th><th class="r">最安値</th><th>状態</th><th></th></tr></thead>
+      <thead><tr><th></th><th class="sticky">品名</th><th>カテゴリ</th><th>購入サイクル</th><th>前回購入日</th><th>前回購入場所</th><th class="r">前回購入価格</th>
+      <th class="r">最安値</th><th class="r">購入回数</th><th>購入リスト</th><th></th></tr></thead>
       <tbody>${rows}</tbody></table></div></div>`;
 }
+app.addEventListener('change', e => {
+  if (!e.target.dataset.pick) return;
+  const n = app.querySelectorAll('[data-pick]:checked').length, btn = $('#bulkBtn');
+  btn.disabled = !n; btn.textContent = n ? `選択した${n}品目を購入リストへ` : '選択した品目を購入リストへ';
+});
 
 /* ===== 価格比較（品目ごと・購入場所別） ===== */
 let cmpQ = '';
@@ -687,6 +719,34 @@ $('#histBody').addEventListener('click', async e => {
 });
 $('#histAdd').addEventListener('click', () => openBuyDlg(histId, 'past'));
 
+/* ===== 品目リスト → 購入リスト ===== */
+const addDlg = $('#addDlg'), addForm = $('#addForm');
+let addId = null, addLow = null;
+function openAddDlg(id) {
+  const it = getItem(id), pf = prefillFor(it);
+  addId = id; addLow = pf.low;
+  $('#addDlgTitle').textContent = `購入リストに追加：${it.name}`;
+  $('#addSrc').textContent = pf.label;
+  addForm.place.value = pf.place; addForm.unitPrice.value = pf.unitPrice ?? ''; addForm.qty.value = pf.qty ?? 1;
+  const useLow = $('#addUseLow');
+  useLow.hidden = !(pf.low && (pf.low.place !== pf.place || pf.low.unitPrice !== pf.unitPrice));
+  if (!useLow.hidden) useLow.textContent = `最安値（${pf.low.place}・${yen(pf.low.unitPrice)}・${fmtDate(pf.low.date)}）に切り替える`;
+  addDlg.showModal();
+}
+$('#addUseLow').addEventListener('click', () => { if (addLow) { addForm.place.value = addLow.place; addForm.unitPrice.value = addLow.unitPrice; } });
+addForm.addEventListener('submit', ev => {
+  if (ev.submitter && ev.submitter.value !== 'ok') return;
+  const it = getItem(addId), price = parseFloat(addForm.unitPrice.value), qty = parseFloat(addForm.qty.value);
+  it.place = addForm.place.value.trim(); it.unitPrice = isNaN(price) ? null : Math.max(0, price); it.qty = isNaN(qty) ? 1 : Math.max(0, qty);
+  it.onList = true; it.skipDate = null;
+  persist(addId); render(); toast(`「${it.name}」を購入リストに追加しました`);
+});
+function bulkAdd() {
+  const ids = [...app.querySelectorAll('[data-pick]:checked')].map(c => c.dataset.pick);
+  for (const id of ids) { const it = getItem(id), pf = prefillFor(it); Object.assign(it, { place: pf.place, unitPrice: pf.unitPrice, qty: pf.qty, onList: true, skipDate: null }); persist(id); }
+  render(); toast(`${ids.length}品目を購入リストに追加しました（前回購入のデータで入力）`);
+}
+
 /* ========= イベント ========= */
 document.querySelector('.tabs').addEventListener('click', e => {
   const t = e.target.dataset.tab; if (!t) return;
@@ -708,7 +768,8 @@ app.addEventListener('click', async e => {
     case 'edit': openItemDlg(id); break;
     case 'buy': openBuyDlg(id, b.dataset.mode || 'list'); break;
     case 'hist': histId = id; renderHist(); histDlg.showModal(); break;
-    case 'addlist': it.onList = true; it.skipDate = null; persist(id); render(); break;
+    case 'addlist': openAddDlg(id); break;
+    case 'bulkadd': bulkAdd(); break;
     case 'skip': it.onList = false; it.skipDate = today(); persist(id); render(); break;
     case 'del':
       if (await askConfirm(`「${it.name}」と、その購入履歴をすべて削除しますか？`, '削除')) { removeItem(id); render(); }
