@@ -88,6 +88,15 @@ dialog h2{margin:0 0 12px;font-size:16px}
 .form-grid .full{grid-column:1/-1}
 .form-grid label{display:flex;flex-direction:column;gap:3px;font-size:12px;color:var(--muted)}
 .form-grid input,.form-grid select{width:100%;color:var(--text);font-size:14px}
+.combo{position:relative;display:block}
+.combo input{padding-right:30px}
+.combo-btn{position:absolute;right:1px;top:1px;bottom:1px;width:28px;border:0;border-left:1px solid var(--line);background:none;color:var(--muted);border-radius:0 5px 5px 0;cursor:pointer;font-size:12px;padding:0}
+.combo-btn:hover{color:var(--text);background:var(--head)}
+.combo-list{position:absolute;left:0;right:0;top:calc(100% + 2px);z-index:60;margin:0;padding:4px;list-style:none;background:var(--surface);border:1px solid var(--line);border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.25);max-height:210px;overflow-y:auto}
+.combo-list li{padding:6px 8px;border-radius:5px;cursor:pointer;color:var(--text);font-size:14px}
+.combo-list li:hover,.combo-list li.on{background:var(--accent);color:var(--accent-text)}
+.combo-list li.empty{cursor:default;color:var(--muted);background:none}
+td.name .linkish{cursor:pointer;border-bottom:1px dashed var(--muted)}
 .form-grid .inline{flex-direction:row;align-items:center;gap:8px;font-size:14px;color:var(--text)}
 .form-grid .inline input{width:auto}
 .cycle-row{display:flex;gap:6px;align-items:center}
@@ -118,8 +127,6 @@ dialog h2{margin:0 0 12px;font-size:16px}
 <dialog id="confirmDlg"><div class="dlg"><p id="confirmMsg" style="margin:0 0 4px"></p>
   <div class="actions"><button class="btn" id="confirmNo">キャンセル</button><button class="btn primary" id="confirmYes">OK</button></div></div></dialog>
 <div class="toast" id="toast" hidden></div>
-<datalist id="catList"></datalist>
-<datalist id="placeList"></datalist>
 
 <!-- 品目 追加/編集 -->
 <dialog id="itemDlg">
@@ -127,8 +134,8 @@ dialog h2{margin:0 0 12px;font-size:16px}
     <h2 id="itemDlgTitle">品目</h2>
     <div class="form-grid">
       <label class="full">品名<input name="name" required maxlength="60" placeholder="例：トイレットペーパー"></label>
-      <label>カテゴリ<input name="category" list="catList" maxlength="30" placeholder="例：日用品"></label>
-      <label>購入場所（業態・店舗名）<input name="place" list="placeList" maxlength="40" placeholder="例：スーパー / ファミリーマート"></label>
+      <label>カテゴリ<span class="combo" data-combo="category"><input name="category" maxlength="30" placeholder="例：日用品" autocomplete="off"><button type="button" class="combo-btn" tabindex="-1" aria-label="過去の入力から選ぶ">▼</button></span></label>
+      <label>購入場所（業態・店舗名）<span class="combo" data-combo="place"><input name="place" maxlength="40" placeholder="例：スーパー / ファミリーマート" autocomplete="off"><button type="button" class="combo-btn" tabindex="-1" aria-label="過去の入力から選ぶ">▼</button></span></label>
       <label>単価（円）<input name="unitPrice" type="number" min="0" step="any" inputmode="decimal"></label>
       <label>数量<input name="qty" type="number" min="0" step="any" inputmode="decimal" value="1"></label>
       <label class="full">購入サイクル
@@ -161,7 +168,7 @@ dialog h2{margin:0 0 12px;font-size:16px}
     <h2 id="buyDlgTitle">購入を記録</h2>
     <div class="form-grid">
       <label>購入日<input name="date" type="date" required></label>
-      <label>購入場所<input name="place" list="placeList" required maxlength="40"></label>
+      <label>購入場所<span class="combo" data-combo="place"><input name="place" required maxlength="40" autocomplete="off"><button type="button" class="combo-btn" tabindex="-1" aria-label="過去の入力から選ぶ">▼</button></span></label>
       <label>単価（円）<input name="unitPrice" type="number" min="0" step="any" required inputmode="decimal"></label>
       <label>数量<input name="qty" type="number" min="0.01" step="any" required inputmode="decimal"></label>
       <div class="full">
@@ -320,10 +327,6 @@ const app = $('#app');
 function render() {
   if (!loaded) { app.innerHTML = '<div class="card empty">読み込み中…</div>'; return; }
   document.querySelectorAll('.tabs button').forEach(b => b.setAttribute('aria-selected', b.dataset.tab === ui.tab));
-  const cats = [...new Set([...DEFAULT_CATS, ...state.items.map(i => i.category).filter(Boolean)])];
-  const places = [...new Set([...DEFAULT_PLACES, ...state.items.map(i => i.place), ...state.purchases.map(p => p.place)].filter(Boolean))];
-  $('#catList').innerHTML = cats.map(c => `<option value="${esc(c)}">`).join('');
-  $('#placeList').innerHTML = places.map(c => `<option value="${esc(c)}">`).join('');
   if (ui.tab === 'list') renderList(); else if (ui.tab === 'items') renderItems(); else renderStats();
 }
 
@@ -350,7 +353,7 @@ function renderList() {
       : `<span class="${r.isDue ? 'warn' : ''}">${r.elapsed}日</span>`;
     return `<tr data-id="${item.id}">
       <td><button class="btn primary sm" data-act="buy" data-id="${item.id}">購入</button></td>
-      <td class="name sticky">${esc(item.name)}${r.isDue ? '<span class="tag due">サイクル</span>' : ''}</td>
+      <td class="name sticky"><span class="linkish" data-act="edit" data-id="${item.id}" title="クリックで品名・カテゴリなどを編集">${esc(item.name)}</span>${r.isDue ? '<span class="tag due">サイクル</span>' : ''}</td>
       <td class="r"><input class="num ${pricey ? 'pricey' : ''}" type="number" min="0" step="any" data-field="unitPrice" data-id="${item.id}" value="${item.unitPrice ?? ''}" title="${pricey ? `最安値より +${fmtNum(item.unitPrice - low.unitPrice)}円` : ''}"></td>
       <td class="r"><input class="qty" type="number" min="0" step="any" data-field="qty" data-id="${item.id}" value="${item.qty ?? 1}"></td>
       <td>${esc(item.category) || '—'}</td>
@@ -363,7 +366,8 @@ function renderList() {
       <td class="r">${low ? `<span class="good">${yen(low.unitPrice)}</span>` : '—'}</td>
       <td>${esc(low && low.place) || '—'}</td>
       <td>${fmtDate(low && low.date)}</td>
-      <td><button class="btn sm" data-act="skip" data-id="${item.id}" title="今回はリストから外す（サイクル品は次の周期まで再表示されません）">外す</button></td>
+      <td><button class="btn sm" data-act="edit" data-id="${item.id}">編集</button>
+          <button class="btn sm" data-act="skip" data-id="${item.id}" title="今回はリストから外す（サイクル品は次の周期まで再表示されません）">外す</button></td>
     </tr>`;
   };
   const COLS = 15;
@@ -486,6 +490,45 @@ function renderStats() {
     </div>`;
 }
 
+
+/* ========= 入力候補つきテキスト欄（手入力 + 過去の入力をプルダウン表示） ========= */
+function pastValues(kind) {
+  const count = new Map(), add = v => { v = (v || '').trim(); if (v) count.set(v, (count.get(v) || 0) + 1); };
+  for (const it of state.items) {
+    if (kind === 'category') add(it.category);
+    else { add(it.place); (it.purchases || []).forEach(p => add(p.place)); }
+  }
+  const used = [...count].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], 'ja')).map(e => e[0]);
+  return used.length ? used : (kind === 'category' ? DEFAULT_CATS : DEFAULT_PLACES);
+}
+function setupCombo(box) {
+  const input = $('input', box), btn = $('.combo-btn', box), kind = box.dataset.combo;
+  let ul = null, idx = -1, opts = [];
+  const close = () => { if (ul) { ul.remove(); ul = null; idx = -1; } };
+  const choose = v => { input.value = v; input.dispatchEvent(new Event('input', { bubbles: true })); close(); input.focus(); };
+  function open(filter) {
+    const all = pastValues(kind), q = (filter || '').trim().toLowerCase();
+    opts = q ? all.filter(v => v.toLowerCase().includes(q) && v.toLowerCase() !== q) : all;
+    close();
+    ul = document.createElement('ul'); ul.className = 'combo-list'; ul.setAttribute('role', 'listbox');
+    ul.innerHTML = opts.length ? opts.map((v, i) => `<li role="option" data-i="${i}" class="${v === input.value.trim() ? 'on' : ''}">${esc(v)}</li>`).join('') : '<li class="empty">候補はありません</li>';
+    box.appendChild(ul);
+    const cur = ul.querySelector('.on'); if (cur) cur.scrollIntoView({ block: 'nearest' });
+  }
+  const mark = i => { idx = i; ul.querySelectorAll('li').forEach((li, k) => li.classList.toggle('on', k === i)); const el = ul.children[i]; if (el) el.scrollIntoView({ block: 'nearest' }); };
+  btn.addEventListener('mousedown', e => e.preventDefault());           // 入力欄のフォーカスを保つ
+  btn.addEventListener('click', () => { if (ul) close(); else { open(''); input.focus(); } });
+  input.addEventListener('input', () => { if (document.activeElement === input && input.value.trim()) open(input.value); else close(); });
+  input.addEventListener('keydown', e => {
+    if (e.key === 'ArrowDown') { e.preventDefault(); if (!ul) open(''); mark(Math.min(opts.length - 1, idx + 1)); }
+    else if (e.key === 'ArrowUp' && ul) { e.preventDefault(); mark(Math.max(0, idx - 1)); }
+    else if (e.key === 'Enter' && ul && idx >= 0) { e.preventDefault(); choose(opts[idx]); }
+    else if (e.key === 'Escape' && ul) { e.preventDefault(); e.stopPropagation(); close(); }
+  });
+  input.addEventListener('blur', () => setTimeout(close, 120));
+  box.addEventListener('mousedown', e => { const li = e.target.closest('li[data-i]'); if (li) { e.preventDefault(); choose(opts[+li.dataset.i]); } });
+}
+document.querySelectorAll('[data-combo]').forEach(setupCombo);
 
 /* ========= ダイアログ ========= */
 const itemDlg = $('#itemDlg'), itemForm = $('#itemForm'), buyDlg = $('#buyDlg'), buyForm = $('#buyForm'), histDlg = $('#histDlg');
