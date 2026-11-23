@@ -121,6 +121,7 @@ td.name .linkish{cursor:pointer;border-bottom:1px dashed var(--muted)}
 .cmp-item h3 small{font-weight:400;color:var(--muted)}
 tr.best td{background:var(--good-bg)}
 .badge{display:inline-block;font-size:11px;font-weight:600;border-radius:999px;padding:0 7px;margin-left:6px;background:var(--good);color:var(--bg)}
+.sale{display:inline-block;font-size:11px;font-weight:600;border-radius:999px;padding:0 6px;margin-left:4px;background:var(--warn-bg);color:var(--warn);vertical-align:middle}
 .sync{font-size:12px;color:var(--muted)}
 .sync.bad{color:var(--warn)}
 .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(16px + env(safe-area-inset-bottom,0px));background:var(--text);color:var(--bg);padding:8px 16px;border-radius:8px;z-index:50;max-width:90vw}
@@ -188,6 +189,7 @@ tr.best td{background:var(--good-bg)}
       <label>購入場所<span class="combo" data-combo="place"><input name="place" required maxlength="40" autocomplete="off"><button type="button" class="combo-btn" tabindex="-1" aria-label="過去の入力から選ぶ">▼</button></span></label>
       <label>単価（円）<input name="unitPrice" type="number" min="0" step="any" required inputmode="decimal"></label>
       <label>数量<input name="qty" type="number" min="0.01" step="any" required inputmode="decimal"></label>
+      <label class="inline full"><input type="checkbox" name="sale">セール品だった</label>
       <div class="full">
         <p class="hint" id="buyRef"></p>
         <p class="hint" id="buyCompare"></p>
@@ -396,13 +398,13 @@ function renderList() {
       <td>${cycleLabel(item)}${nextTxt}</td>
       <td>${fmtDate(last && last.date)}</td>
       <td class="r">${elapsed}</td>
-      <td class="r">${yen(last && last.unitPrice)}</td>
+      <td class="r">${yen(last && last.unitPrice)}${last && last.sale ? '<span class="sale">セール</span>' : ''}</td>
       <td>${esc(last && last.place) || '—'}</td>
-      <td class="r">${low ? `<span class="good">${yen(low.unitPrice)}</span>` : '—'}</td>
+      <td class="r">${low ? `<span class="good">${yen(low.unitPrice)}</span>${low.sale ? '<span class="sale">セール</span>' : ''}` : '—'}</td>
       <td>${esc(low && low.place) || '—'}</td>
       <td>${fmtDate(low && low.date)}</td>
       <td><button class="btn sm" data-act="edit" data-id="${item.id}">編集</button>
-          <button class="btn sm" data-act="skip" data-id="${item.id}" title="今回はリストから外す（サイクル品は次の周期まで再表示されません）">外す</button></td>
+          <button class="btn sm" data-act="skip" data-id="${item.id}" title="購入リストから削除します（品目は品目リストに残ります。サイクル品は次の周期でまた自動で載ります）">削除</button></td>
     </tr>`;
   };
   const COLS = 15;
@@ -455,7 +457,7 @@ const planTotal = rows => rows.reduce((s, r) => s + (r.item.unitPrice || 0) * (r
 /** 購入リストに載せるときの初期値：前回購入のデータを優先し、履歴がなければ品目の登録内容 */
 function prefillFor(item) {
   const { last, low } = statsFor(item);
-  if (last) return { place: last.place, unitPrice: last.unitPrice, qty: last.qty, label: `前回購入（${fmtDate(last.date)}）のデータを自動入力しました`, low };
+  if (last) return { place: last.place, unitPrice: last.unitPrice, qty: last.qty, label: `前回購入（${fmtDate(last.date)}）のデータを自動入力しました` + (last.sale ? '。前回はセール価格でした' : ''), low };
   return { place: item.place || '', unitPrice: item.unitPrice ?? null, qty: item.qty ?? 1, label: '購入履歴がないため、品目の登録内容を入力しました', low: null };
 }
 function isInList(item, st) { const due = nextDue(item, st); return item.onList || !!(due && due <= today()); }
@@ -467,8 +469,8 @@ function renderItems() {
     return `<tr>
       <td>${inList ? '' : `<input type="checkbox" data-pick="${item.id}" aria-label="${esc(item.name)}を選択">`}</td>
       <td class="name sticky">${esc(item.name)}</td><td>${esc(item.category) || '—'}</td><td>${cycleLabel(item)}</td>
-      <td>${fmtDate(last && last.date)}</td><td>${esc(last && last.place) || '—'}</td><td class="r">${yen(last && last.unitPrice)}</td>
-      <td class="r">${st.low ? `<span class="good">${yen(st.low.unitPrice)}</span>` : '—'}</td><td class="r">${st.count}</td>
+      <td>${fmtDate(last && last.date)}</td><td>${esc(last && last.place) || '—'}</td><td class="r">${yen(last && last.unitPrice)}${last && last.sale ? '<span class="sale">セール</span>' : ''}</td>
+      <td class="r">${st.low ? `<span class="good">${yen(st.low.unitPrice)}</span>${st.low.sale ? '<span class="sale">セール</span>' : ''}` : '—'}</td><td class="r">${st.count}</td>
       <td>${inList ? '<span class="tag due">リスト中</span>' : `<button class="btn sm primary" data-act="addlist" data-id="${item.id}">購入リストへ</button>`}</td>
       <td><button class="btn sm" data-act="buy" data-id="${item.id}" data-mode="direct">購入記録</button>
           <button class="btn sm" data-act="hist" data-id="${item.id}">履歴</button>
@@ -500,8 +502,8 @@ function compareHtml(q) {
   return items.map(item => {
     const by = new Map();
     for (const p of item.purchases) {
-      const g = by.get(p.place) || { place: p.place, n: 0, qty: 0, sum: 0, low: Infinity, last: null };
-      g.n++; g.qty += p.qty; g.sum += p.unitPrice * p.qty; g.low = Math.min(g.low, p.unitPrice);
+      const g = by.get(p.place) || { place: p.place, n: 0, sale: 0, qty: 0, sum: 0, low: Infinity, last: null };
+      g.n++; if (p.sale) g.sale++; g.qty += p.qty; g.sum += p.unitPrice * p.qty; g.low = Math.min(g.low, p.unitPrice);
       if (!g.last || p.date >= g.last.date) g.last = p;
       by.set(p.place, g);
     }
@@ -511,10 +513,10 @@ function compareHtml(q) {
       return `<tr class="${i === 0 ? 'best' : ''}"><td>${esc(g.place)}${i === 0 && rows.length > 1 ? '<span class="badge">最安</span>' : ''}</td>
         <td class="r">${g.n}</td><td class="r"><b>${yen(g.low)}</b></td>
         <td class="r ${diff > 0 ? 'warn' : 'muted'}">${diff > 0 ? `+${yen(diff)}（+${(diff / best * 100).toFixed(0)}%）` : '—'}</td>
-        <td class="r">${yen(avg)}</td><td class="r">${yen(g.last.unitPrice)}</td><td>${fmtDate(g.last.date)}</td></tr>`;
+        <td class="r">${yen(avg)}</td><td class="r">${yen(g.last.unitPrice)}${g.last.sale ? '<span class="sale">セール</span>' : ''}</td><td class="r">${g.sale ? `${g.sale}/${g.n}` : '—'}</td><td>${fmtDate(g.last.date)}</td></tr>`;
     }).join('');
     return `<section class="card cmp-item"><h3>${esc(item.name)}<small>${esc(item.category) || 'カテゴリ未設定'} ・ 購入${item.purchases.length}回 ・ ${rows.length}か所</small></h3>
-      <div class="scroll"><table><thead><tr><th>購入場所</th><th class="r">購入回数</th><th class="r">最安値</th><th class="r">最安値との差</th><th class="r">平均単価</th><th class="r">最新単価</th><th>最終購入日</th></tr></thead><tbody>${tr}</tbody></table></div></section>`;
+      <div class="scroll"><table><thead><tr><th>購入場所</th><th class="r">購入回数</th><th class="r">最安値</th><th class="r">最安値との差</th><th class="r">平均単価</th><th class="r">最新単価</th><th class="r">セール購入</th><th>最終購入日</th></tr></thead><tbody>${tr}</tbody></table></div></section>`;
   }).join('');
 }
 function renderCompare() {
@@ -673,7 +675,7 @@ function openBuyDlg(id, mode) { // mode: 'list'(リストから購入) | 'direct
   $('#buyDlgTitle').textContent = `${mode === 'past' ? '過去の購入を追加' : '購入を記録'}：${it.name}`;
   buyForm.date.value = today(); buyForm.date.max = today();
   buyForm.place.value = it.place || (st.last && st.last.place) || '';
-  buyForm.unitPrice.value = it.unitPrice ?? ''; buyForm.qty.value = it.qty ?? 1;
+  buyForm.unitPrice.value = it.unitPrice ?? ''; buyForm.qty.value = it.qty ?? 1; buyForm.sale.checked = false;
   $('#buyRef').textContent = st.last ? `前回：${fmtDate(st.last.date)} ${st.last.place} ${yen(st.last.unitPrice)}` : '購入履歴はまだありません';
   updateBuyCompare(); buyDlg.showModal();
 }
@@ -691,10 +693,10 @@ function updateBuyCompare() {
 buyForm.unitPrice.addEventListener('input', updateBuyCompare);
 buyForm.addEventListener('submit', ev => {
   if (ev.submitter && ev.submitter.value !== 'ok') return;
-  const f = buyForm, unitPrice = parseFloat(f.unitPrice.value), qty = parseFloat(f.qty.value), place = f.place.value.trim();
+  const f = buyForm, sale = f.sale.checked, unitPrice = parseFloat(f.unitPrice.value), qty = parseFloat(f.qty.value), place = f.place.value.trim();
   if (!f.date.value || !place || isNaN(unitPrice) || isNaN(qty)) return;
   const it = getItem(buyCtx.id);
-  (it.purchases = it.purchases || []).push({ id: uid(), date: f.date.value, place, unitPrice, qty });
+  (it.purchases = it.purchases || []).push({ id: uid(), date: f.date.value, place, unitPrice, qty, sale });
   if (buyCtx.mode !== 'past') { // 通常の購入：リストから外し、次回の初期値を今回の内容にする
     it.onList = false; it.unitPrice = unitPrice; it.qty = qty; it.place = place;
   }
@@ -706,11 +708,17 @@ function renderHist() {
   const st = statsFor(it);
   $('#histTitle').textContent = `購入履歴：${it.name}`;
   const ps = [...(it.purchases || [])].sort((a, b) => b.date.localeCompare(a.date));
-  $('#histBody').innerHTML = ps.length ? `<table><thead><tr><th>購入日</th><th>購入場所</th><th class="r">単価</th><th class="r">数量</th><th class="r">小計</th><th></th></tr></thead><tbody>${
+  $('#histBody').innerHTML = ps.length ? `<table><thead><tr><th>購入日</th><th>購入場所</th><th class="r">単価</th><th class="r">数量</th><th class="r">小計</th><th>セール</th><th></th></tr></thead><tbody>${
     ps.map(p => `<tr><td>${fmtDate(p.date)}</td><td>${esc(p.place)}</td><td class="r">${yen(p.unitPrice)}${st.low && st.low.id === p.id ? ' <span class="good" title="最安値">★</span>' : ''}</td>
       <td class="r">${fmtNum(p.qty)}</td><td class="r">${yen(p.unitPrice * p.qty)}</td>
+      <td><input type="checkbox" data-sale="${p.id}" ${p.sale ? 'checked' : ''} aria-label="セール品"></td>
       <td><button class="btn sm danger" data-delp="${p.id}">削除</button></td></tr>`).join('')}</tbody></table>` : '<p class="empty">履歴はまだありません</p>';
 }
+$('#histBody').addEventListener('change', e => {
+  const pid = e.target.dataset.sale; if (!pid) return;
+  const it = getItem(histId), p = it.purchases.find(x => x.id === pid); if (!p) return;
+  p.sale = e.target.checked; persist(it.id); render();
+});
 $('#histBody').addEventListener('click', async e => {
   const pid = e.target.dataset.delp; if (!pid) return;
   if (!(await askConfirm('この購入記録を削除しますか？', '削除'))) return;
@@ -770,7 +778,7 @@ app.addEventListener('click', async e => {
     case 'hist': histId = id; renderHist(); histDlg.showModal(); break;
     case 'addlist': openAddDlg(id); break;
     case 'bulkadd': bulkAdd(); break;
-    case 'skip': it.onList = false; it.skipDate = today(); persist(id); render(); break;
+    case 'skip': it.onList = false; it.skipDate = today(); persist(id); render(); toast(`「${it.name}」を購入リストから削除しました（品目リストには残っています）`); break;
     case 'del':
       if (await askConfirm(`「${it.name}」と、その購入履歴をすべて削除しますか？`, '削除')) { removeItem(id); render(); }
       break;
@@ -807,7 +815,7 @@ function normalizeImport(d) {
     id: String(i.id || uid()), name: String(i.name), category: i.category || '', place: i.place || '',
     unitPrice: i.unitPrice ?? null, qty: i.qty ?? 1, cycleUnit: i.cycleUnit || 'none', cycleN: i.cycleN || 1,
     onList: !!i.onList, skipDate: i.skipDate || null,
-    purchases: [...(i.purchases || []), ...legacy.filter(p => p.itemId === i.id)].map(p => ({ id: String(p.id || uid()), date: p.date, place: p.place || '', unitPrice: +p.unitPrice, qty: +p.qty })),
+    purchases: [...(i.purchases || []), ...legacy.filter(p => p.itemId === i.id)].map(p => ({ id: String(p.id || uid()), date: p.date, place: p.place || '', unitPrice: +p.unitPrice, qty: +p.qty, sale: !!p.sale })),
   }));
 }
 $('#importFile').addEventListener('change', async e => {
@@ -841,7 +849,7 @@ function loadSample() {
     const step = days[unit] * n;
     let ago = Math.round(step * (0.5 + rnd() * 0.9));
     while (ago < 150) {
-      item.purchases.push({ id: uid(), date: addUnits(t, -ago, 'day'), place: places[Math.floor(rnd() * places.length)], unitPrice: Math.round(base * (0.82 + rnd() * 0.36)), qty });
+      item.purchases.push({ id: uid(), date: addUnits(t, -ago, 'day'), place: places[Math.floor(rnd() * places.length)], unitPrice: Math.round(base * (0.82 + rnd() * 0.36)), qty, sale: rnd() < 0.2 });
       ago += Math.max(1, Math.round(step * (0.85 + rnd() * 0.3)));
     }
     state.items.push(item); persist(item.id);
