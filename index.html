@@ -105,6 +105,17 @@ td.name .linkish{cursor:pointer;border-bottom:1px dashed var(--muted)}
 .hint{font-size:12px;color:var(--muted);margin:2px 0 0}
 .hint.good{color:var(--good)}
 @media (max-width:600px){.form-grid{grid-template-columns:1fr}}
+.totals{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px}
+@media (max-width:700px){.totals{grid-template-columns:1fr}}
+.totals section{padding:10px 14px;min-width:0}
+.totals h3{margin:0 0 6px;font-size:12px;font-weight:600;color:var(--muted);display:flex;justify-content:space-between}
+.totals ul{list-style:none;margin:0;padding:0;display:grid;gap:5px}
+.totals li{display:grid;grid-template-columns:minmax(0,9em) 1fr auto;gap:8px;align-items:center}
+.totals li .n{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.totals li .bar-t{height:8px;border-radius:4px;background:var(--head);overflow:hidden}
+.totals li .bar-t i{display:block;height:100%;background:var(--accent);border-radius:4px}
+.totals li .v{font-variant-numeric:tabular-nums;font-weight:600}
+.totals .none{color:var(--muted)}
 .sync{font-size:12px;color:var(--muted)}
 .sync.bad{color:var(--warn)}
 .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(16px + env(safe-area-inset-bottom,0px));background:var(--text);color:var(--bg);padding:8px 16px;border-radius:8px;z-index:50;max-width:90vw}
@@ -391,6 +402,7 @@ function renderList() {
         <option value="category" ${ui.group === 'category' ? 'selected' : ''}>カテゴリ別</option>
         <option value="place" ${ui.group === 'place' ? 'selected' : ''}>購入場所別</option></select></label>
     </div>
+    <div class="totals" id="listTotals">${totalsHtml(rows)}</div>
     <div class="card">
       <div class="scroll"><table>
         <thead><tr><th></th>${th('name', '品名', 'sticky')}${th('price', '単価', 'r')}<th class="r">数量</th>${th('category', 'カテゴリ')}${th('place', '購入場所')}
@@ -399,6 +411,20 @@ function renderList() {
         <tbody>${body}</tbody></table></div>
       <div class="summary"><span>リスト <b>${rows.length}</b> 件</span><span>予定合計 <b id="planTotal">${yen(planTotal(rows))}</b></span></div>
     </div>`;
+}
+function totalsBy(rows, key) {
+  const m = new Map();
+  for (const r of rows) { const k = r.item[key] || '未設定', v = (r.item.unitPrice || 0) * (r.item.qty || 0); m.set(k, (m.get(k) || 0) + v); }
+  return [...m].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], 'ja'));
+}
+function totalsHtml(rows) {
+  const block = (title, key) => {
+    const list = totalsBy(rows, key), max = list.length ? list[0][1] : 0;
+    return `<section class="card"><h3><span>${title}</span><span>予定総額順</span></h3>` + (list.length
+      ? `<ul>${list.map(([k, v]) => `<li><span class="n" title="${esc(k)}">${esc(k)}</span><span class="bar-t"><i style="width:${max ? Math.max(2, v / max * 100) : 0}%"></i></span><span class="v">${yen(v)}</span></li>`).join('')}</ul>`
+      : '<div class="none">リストは空です</div>') + '</section>';
+  };
+  return block('購入場所別の総額', 'place') + block('カテゴリ別の総額', 'category');
 }
 const planTotal = rows => rows.reduce((s, r) => s + (r.item.unitPrice || 0) * (r.item.qty || 0), 0);
 
@@ -659,7 +685,8 @@ app.addEventListener('change', e => {
   it[f] = v; persist(it.id);
   const low = statsFor(it).low;
   if (f === 'unitPrice') e.target.classList.toggle('pricey', !!low && v > low.unitPrice);
-  $('#planTotal').textContent = yen(planTotal(listRows())); // 入力欄のフォーカスを保つため全体再描画はしない
+  const rows = listRows(); // 入力欄のフォーカスを保つため全体再描画はせず、合計だけ更新する
+  $('#planTotal').textContent = yen(planTotal(rows)); $('#listTotals').innerHTML = totalsHtml(rows);
 });
 
 /* ========= 書き出し／読み込み ========= */
