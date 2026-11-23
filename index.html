@@ -1,31 +1,36 @@
-<!doctype html>
-<html lang="ja">
-<head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>消耗品 購入リスト</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="claude:viewport-fit-sides" content="cover">
+<title>消耗品購入リスト</title>
 <style>
 :root{
   --bg:#f5f6f8; --surface:#fff; --text:#1f2430; --muted:#6b7280; --line:#e3e6ec;
   --accent:#2563eb; --accent-text:#fff; --warn:#c2410c; --warn-bg:#fff1e6; --good:#15803d; --good-bg:#e8f6ec;
   --head:#f0f2f6; --shadow:0 1px 3px rgba(0,0,0,.08);
+  --gutter-l:max(16px,env(safe-area-inset-left,0px)); --gutter-r:max(16px,env(safe-area-inset-right,0px));
 }
 @media (prefers-color-scheme: dark){
-  :root{
+  :root:not([data-theme="light"]){
     --bg:#14161b; --surface:#1d2027; --text:#e8eaf0; --muted:#9aa3b2; --line:#2e333d;
     --accent:#5b8cff; --accent-text:#0b1020; --warn:#ffa56b; --warn-bg:#3a2616; --good:#6fd18c; --good-bg:#16301f;
-    --head:#252932; --shadow:none;
+    --head:#252932; --shadow:none; color-scheme:dark;
   }
 }
+:root[data-theme="dark"]{
+  --bg:#14161b; --surface:#1d2027; --text:#e8eaf0; --muted:#9aa3b2; --line:#2e333d;
+  --accent:#5b8cff; --accent-text:#0b1020; --warn:#ffa56b; --warn-bg:#3a2616; --good:#6fd18c; --good-bg:#16301f;
+  --head:#252932; --shadow:none; color-scheme:dark;
+}
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:30;background:var(--surface)}
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--text);font:14px/1.5 -apple-system,BlinkMacSystemFont,"Hiragino Sans","Yu Gothic UI","Noto Sans JP",sans-serif}
-header.top{background:var(--surface);border-bottom:1px solid var(--line);padding:10px 16px;display:flex;flex-wrap:wrap;gap:8px 16px;align-items:center;position:sticky;top:0;z-index:20}
+header.top{background:var(--surface);border-bottom:1px solid var(--line);padding:10px var(--gutter-r) 10px var(--gutter-l);display:flex;flex-wrap:wrap;gap:8px 16px;align-items:center;position:sticky;top:env(safe-area-inset-top,0px);z-index:20}
 h1{font-size:17px;margin:0}
 .tabs{display:flex;gap:4px;flex:1}
 .tabs button{border:0;background:none;color:var(--muted);padding:6px 12px;border-radius:8px;font:inherit;cursor:pointer}
 .tabs button[aria-selected=true]{background:var(--accent);color:var(--accent-text);font-weight:600}
 .tools{display:flex;gap:6px}
-main{padding:16px;max-width:1500px;margin:0 auto}
+main{padding:16px var(--gutter-r) 16px var(--gutter-l);max-width:1500px;margin:0 auto}
 .btn{border:1px solid var(--line);background:var(--surface);color:var(--text);padding:6px 12px;border-radius:8px;font:inherit;cursor:pointer;display:inline-block}
 .btn:hover{border-color:var(--accent)}
 .btn.primary{background:var(--accent);color:var(--accent-text);border-color:var(--accent);font-weight:600}
@@ -91,23 +96,28 @@ dialog h2{margin:0 0 12px;font-size:16px}
 .hint{font-size:12px;color:var(--muted);margin:2px 0 0}
 .hint.good{color:var(--good)}
 @media (max-width:600px){.form-grid{grid-template-columns:1fr}}
+.sync{font-size:12px;color:var(--muted)}
+.sync.bad{color:var(--warn)}
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(16px + env(safe-area-inset-bottom,0px));background:var(--text);color:var(--bg);padding:8px 16px;border-radius:8px;z-index:50;max-width:90vw}
+.tabs button:focus-visible,.btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 </style>
-</head>
-<body>
 <header class="top">
-  <h1>🛒 消耗品 購入リスト</h1>
+  <h1>消耗品購入リスト</h1>
   <nav class="tabs" role="tablist">
     <button role="tab" data-tab="list">購入リスト</button>
     <button role="tab" data-tab="items">品目・履歴</button>
     <button role="tab" data-tab="stats">集計</button>
   </nav>
-  <div class="tools">
+  <div class="tools"><span class="sync" id="sync"></span>
     <button class="btn sm" id="exportBtn" title="データをJSONファイルで保存">書き出し</button>
     <label class="btn sm" title="書き出したJSONを読み込み">読み込み<input type="file" id="importFile" accept="application/json,.json" hidden></label>
   </div>
 </header>
 <main id="app"></main>
 
+<dialog id="confirmDlg"><div class="dlg"><p id="confirmMsg" style="margin:0 0 4px"></p>
+  <div class="actions"><button class="btn" id="confirmNo">キャンセル</button><button class="btn primary" id="confirmYes">OK</button></div></div></dialog>
+<div class="toast" id="toast" hidden></div>
 <datalist id="catList"></datalist>
 <datalist id="placeList"></datalist>
 
@@ -211,18 +221,43 @@ function addUnits(iso, n, unit) {
 const DEFAULT_CATS = ['食品', '飲料', '調味料', '日用品', '洗剤・衛生', 'ペット', 'その他'];
 const DEFAULT_PLACES = ['コンビニ', 'スーパー', 'ドラッグストア', 'ホームセンター', 'ネット通販', 'ファミリーマート', 'セブン-イレブン', 'ローソン'];
 
-function load() {
-  try {
-    const s = JSON.parse(localStorage.getItem(KEY));
-    if (s && Array.isArray(s.items) && Array.isArray(s.purchases)) return { ui: {}, ...s };
-  } catch (e) { /* ignore */ }
-  return { items: [], purchases: [], ui: {} };
+const LS_DATA = 'supply-tracker-v2', LS_UI = 'supply-tracker-ui';
+let state = { items: [], purchases: [] };           // items は購入履歴(purchases)を内側に持つ。state.purchases は集計用の平坦な写し
+const ui = Object.assign({ tab: 'list', sortKey: 'category', sortDir: 1, group: 'none', period: 'month', anchor: today() }, (() => {
+  try { return JSON.parse(localStorage.getItem(LS_UI)) || {}; } catch (e) { return {}; }
+})());
+function saveUi() { try { localStorage.setItem(LS_UI, JSON.stringify({ tab: ui.tab, sortKey: ui.sortKey, sortDir: ui.sortDir, group: ui.group, period: ui.period })); } catch (e) { /* 保存できなくても動作する */ } }
+
+let db = null, downloads = null, loaded = false;
+function rebuild() { state.purchases = state.items.flatMap(it => (it.purchases || []).map(p => ({ ...p, itemId: it.id }))); }
+function toast(msg) {
+  const t = $('#toast'); t.textContent = msg; t.hidden = false;
+  clearTimeout(toast.t); toast.t = setTimeout(() => { t.hidden = true; }, 3500);
 }
-let state = load();
-const ui = Object.assign({ tab: 'list', sortKey: 'category', sortDir: 1, group: 'none', period: 'month', anchor: today() }, state.ui);
-function save() {
-  state.ui = { tab: ui.tab, sortKey: ui.sortKey, sortDir: ui.sortDir, group: ui.group, period: ui.period };
-  try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) { alert('保存できませんでした（ブラウザの保存領域がいっぱいか、無効です）'); }
+function setSync(text, bad) { const el = $('#sync'); el.textContent = text; el.classList.toggle('bad', !!bad); }
+function dbErr(e) { toast('保存できませんでした：' + ((e && e.message) || '編集権限がないか、接続できません')); }
+function localSave() { try { localStorage.setItem(LS_DATA, JSON.stringify({ items: state.items })); } catch (e) { toast('この端末に保存できませんでした'); } }
+const chains = {};
+/** 変更した品目を保存する（同じドキュメントへの書き込みは1件ずつ順番に） */
+function persist(id) {
+  rebuild();
+  if (!db) { localSave(); return; }
+  const it = state.items.find(i => i.id === id); if (!it) return;
+  const { id: _omit, ...body } = JSON.parse(JSON.stringify(it));
+  chains[id] = (chains[id] || Promise.resolve()).then(() => db.collection('items').doc(id).set(body)).catch(dbErr);
+}
+function removeItem(id) {
+  state.items = state.items.filter(i => i.id !== id); rebuild();
+  if (!db) { localSave(); return; }
+  chains[id] = (chains[id] || Promise.resolve()).then(() => db.collection('items').doc(id).delete()).catch(dbErr);
+}
+function askConfirm(msg, okLabel = 'OK') {
+  return new Promise(res => {
+    const d = $('#confirmDlg'); $('#confirmMsg').textContent = msg; $('#confirmYes').textContent = okLabel;
+    const done = v => { d.close(); $('#confirmYes').onclick = $('#confirmNo').onclick = null; res(v); };
+    $('#confirmYes').onclick = () => done(true); $('#confirmNo').onclick = () => done(false); d.oncancel = () => res(false);
+    d.showModal();
+  });
 }
 
 /* ========= 計算 ========= */
@@ -235,8 +270,7 @@ function cycleLabel(it) {
 }
 function statsFor(item) {
   let last = null, low = null, count = 0;
-  for (const p of state.purchases) {
-    if (p.itemId !== item.id) continue;
+  for (const p of item.purchases || []) {
     count++;
     if (!last || p.date >= last.date) last = p;
     if (!low || p.unitPrice < low.unitPrice || (p.unitPrice === low.unitPrice && p.date >= low.date)) low = p;
@@ -284,6 +318,7 @@ function cmpBy(key, dir) {
 /* ========= 描画 ========= */
 const app = $('#app');
 function render() {
+  if (!loaded) { app.innerHTML = '<div class="card empty">読み込み中…</div>'; return; }
   document.querySelectorAll('.tabs button').forEach(b => b.setAttribute('aria-selected', b.dataset.tab === ui.tab));
   const cats = [...new Set([...DEFAULT_CATS, ...state.items.map(i => i.category).filter(Boolean)])];
   const places = [...new Set([...DEFAULT_PLACES, ...state.items.map(i => i.place), ...state.purchases.map(p => p.place)].filter(Boolean))];
@@ -451,10 +486,12 @@ function renderStats() {
     </div>`;
 }
 
+
 /* ========= ダイアログ ========= */
 const itemDlg = $('#itemDlg'), itemForm = $('#itemForm'), buyDlg = $('#buyDlg'), buyForm = $('#buyForm'), histDlg = $('#histDlg');
 document.querySelectorAll('dialog [data-close]').forEach(b => b.addEventListener('click', () => b.closest('dialog').close()));
 let editingId = null, buyCtx = null, histId = null;
+const getItem = id => state.items.find(i => i.id === id);
 
 function updateCycleUi() {
   const u = itemForm.cycleUnit.value, n = Math.max(1, parseInt(itemForm.cycleN.value) || 1);
@@ -467,7 +504,7 @@ itemForm.cycleN.addEventListener('input', updateCycleUi);
 
 function openItemDlg(id) {
   editingId = id;
-  const it = id ? state.items.find(i => i.id === id) : { qty: 1, cycleUnit: 'none', cycleN: 1, onList: true };
+  const it = id ? getItem(id) : { qty: 1, cycleUnit: 'none', cycleN: 1, onList: true };
   $('#itemDlgTitle').textContent = id ? '品目を編集' : '品目を追加';
   itemForm.name.value = it.name || ''; itemForm.category.value = it.category || ''; itemForm.place.value = it.place || '';
   itemForm.unitPrice.value = it.unitPrice ?? ''; itemForm.qty.value = it.qty ?? 1;
@@ -484,13 +521,14 @@ itemForm.addEventListener('submit', ev => {
     cycleUnit: f.cycleUnit.value, cycleN: Math.max(1, parseInt(f.cycleN.value) || 1), onList: f.onList.checked,
   };
   if (!data.name) return;
-  if (editingId) Object.assign(state.items.find(i => i.id === editingId), data);
-  else state.items.push({ id: uid(), skipDate: null, ...data });
-  save(); render();
+  let id = editingId;
+  if (id) Object.assign(getItem(id), data);
+  else { id = uid(); state.items.push({ id, skipDate: null, purchases: [], ...data }); }
+  persist(id); render();
 });
 
 function openBuyDlg(id, mode) { // mode: 'list'(リストから購入) | 'direct' | 'past'
-  const it = state.items.find(i => i.id === id), st = statsFor(it);
+  const it = getItem(id), st = statsFor(it);
   buyCtx = { id, mode };
   $('#buyDlgTitle').textContent = `${mode === 'past' ? '過去の購入を追加' : '購入を記録'}：${it.name}`;
   buyForm.date.value = today(); buyForm.date.max = today();
@@ -500,13 +538,13 @@ function openBuyDlg(id, mode) { // mode: 'list'(リストから購入) | 'direct
   updateBuyCompare(); buyDlg.showModal();
 }
 function updateBuyCompare() {
-  const it = state.items.find(i => i.id === buyCtx.id), low = statsFor(it).low, el = $('#buyCompare');
+  const low = statsFor(getItem(buyCtx.id)).low, el = $('#buyCompare');
   const v = parseFloat(buyForm.unitPrice.value);
   el.className = 'hint';
   if (!low) { el.textContent = ''; return; }
   const base = `最安値：${yen(low.unitPrice)}（${low.place}・${fmtDate(low.date)}）`;
   if (isNaN(v)) el.textContent = base;
-  else if (v < low.unitPrice) { el.textContent = `${base} → 最安値を更新します 🎉`; el.className = 'hint good'; }
+  else if (v < low.unitPrice) { el.textContent = `${base} → 最安値を更新します`; el.className = 'hint good'; }
   else if (v > low.unitPrice) el.textContent = `${base} → 最安値より ${fmtNum(v - low.unitPrice)}円 高い`;
   else el.textContent = `${base} → 最安値タイ`;
 }
@@ -515,87 +553,101 @@ buyForm.addEventListener('submit', ev => {
   if (ev.submitter && ev.submitter.value !== 'ok') return;
   const f = buyForm, unitPrice = parseFloat(f.unitPrice.value), qty = parseFloat(f.qty.value), place = f.place.value.trim();
   if (!f.date.value || !place || isNaN(unitPrice) || isNaN(qty)) return;
-  state.purchases.push({ id: uid(), itemId: buyCtx.id, date: f.date.value, place, unitPrice, qty });
-  const it = state.items.find(i => i.id === buyCtx.id);
+  const it = getItem(buyCtx.id);
+  (it.purchases = it.purchases || []).push({ id: uid(), date: f.date.value, place, unitPrice, qty });
   if (buyCtx.mode !== 'past') { // 通常の購入：リストから外し、次回の初期値を今回の内容にする
     it.onList = false; it.unitPrice = unitPrice; it.qty = qty; it.place = place;
   }
-  save(); render(); if (histDlg.open) renderHist();
+  persist(it.id); render(); if (histDlg.open) renderHist();
 });
 
 function renderHist() {
-  const it = state.items.find(i => i.id === histId), st = statsFor(it);
+  const it = getItem(histId); if (!it) { histDlg.close(); return; }
+  const st = statsFor(it);
   $('#histTitle').textContent = `購入履歴：${it.name}`;
-  const ps = state.purchases.filter(p => p.itemId === histId).sort((a, b) => b.date.localeCompare(a.date));
+  const ps = [...(it.purchases || [])].sort((a, b) => b.date.localeCompare(a.date));
   $('#histBody').innerHTML = ps.length ? `<table><thead><tr><th>購入日</th><th>購入場所</th><th class="r">単価</th><th class="r">数量</th><th class="r">小計</th><th></th></tr></thead><tbody>${
     ps.map(p => `<tr><td>${fmtDate(p.date)}</td><td>${esc(p.place)}</td><td class="r">${yen(p.unitPrice)}${st.low && st.low.id === p.id ? ' <span class="good" title="最安値">★</span>' : ''}</td>
       <td class="r">${fmtNum(p.qty)}</td><td class="r">${yen(p.unitPrice * p.qty)}</td>
       <td><button class="btn sm danger" data-delp="${p.id}">削除</button></td></tr>`).join('')}</tbody></table>` : '<p class="empty">履歴はまだありません</p>';
 }
-$('#histBody').addEventListener('click', e => {
-  const id = e.target.dataset.delp;
-  if (!id || !confirm('この購入記録を削除しますか？')) return;
-  state.purchases = state.purchases.filter(p => p.id !== id);
-  save(); render(); renderHist();
+$('#histBody').addEventListener('click', async e => {
+  const pid = e.target.dataset.delp; if (!pid) return;
+  if (!(await askConfirm('この購入記録を削除しますか？', '削除'))) return;
+  const it = getItem(histId); it.purchases = it.purchases.filter(p => p.id !== pid);
+  persist(it.id); render(); renderHist();
 });
 $('#histAdd').addEventListener('click', () => openBuyDlg(histId, 'past'));
 
 /* ========= イベント ========= */
 document.querySelector('.tabs').addEventListener('click', e => {
   const t = e.target.dataset.tab; if (!t) return;
-  ui.tab = t; save(); render();
+  ui.tab = t; saveUi(); render();
 });
-app.addEventListener('click', e => {
+app.addEventListener('click', async e => {
   const th = e.target.closest('th[data-sort]');
-  if (th) { const k = th.dataset.sort; if (ui.sortKey === k) ui.sortDir *= -1; else { ui.sortKey = k; ui.sortDir = 1; } save(); return render(); }
-  if (e.target.id === 'sortDir') { ui.sortDir *= -1; save(); return render(); }
+  if (th) { const k = th.dataset.sort; if (ui.sortKey === k) ui.sortDir *= -1; else { ui.sortKey = k; ui.sortDir = 1; } saveUi(); return render(); }
+  if (e.target.id === 'sortDir') { ui.sortDir *= -1; saveUi(); return render(); }
   const per = e.target.closest('[data-period]');
-  if (per) { ui.period = per.dataset.period; save(); return render(); }
+  if (per) { ui.period = per.dataset.period; saveUi(); return render(); }
   const nav = e.target.closest('[data-nav]');
   if (nav) { const n = +nav.dataset.nav; ui.anchor = n === 0 ? today() : addUnits(ui.anchor, n, ui.period); return render(); }
   const b = e.target.closest('[data-act]'); if (!b) return;
-  const id = b.dataset.id, it = id && state.items.find(i => i.id === id);
+  const id = b.dataset.id, it = id && getItem(id);
   switch (b.dataset.act) {
     case 'new': openItemDlg(null); break;
     case 'sample': loadSample(); break;
     case 'edit': openItemDlg(id); break;
     case 'buy': openBuyDlg(id, b.dataset.mode || 'list'); break;
     case 'hist': histId = id; renderHist(); histDlg.showModal(); break;
-    case 'addlist': it.onList = true; it.skipDate = null; save(); render(); break;
-    case 'skip': it.onList = false; it.skipDate = today(); save(); render(); break;
+    case 'addlist': it.onList = true; it.skipDate = null; persist(id); render(); break;
+    case 'skip': it.onList = false; it.skipDate = today(); persist(id); render(); break;
     case 'del':
-      if (confirm(`「${it.name}」と、その購入履歴をすべて削除しますか？`)) {
-        state.items = state.items.filter(i => i.id !== id); state.purchases = state.purchases.filter(p => p.itemId !== id); save(); render();
-      }
+      if (await askConfirm(`「${it.name}」と、その購入履歴をすべて削除しますか？`, '削除')) { removeItem(id); render(); }
       break;
   }
 });
 app.addEventListener('change', e => {
-  if (e.target.id === 'sortKey') { ui.sortKey = e.target.value; save(); return render(); }
-  if (e.target.id === 'groupBy') { ui.group = e.target.value; save(); return render(); }
+  if (e.target.id === 'sortKey') { ui.sortKey = e.target.value; saveUi(); return render(); }
+  if (e.target.id === 'groupBy') { ui.group = e.target.value; saveUi(); return render(); }
   const f = e.target.dataset.field; if (!f) return;
-  const it = state.items.find(i => i.id === e.target.dataset.id), v = parseFloat(e.target.value);
+  const it = getItem(e.target.dataset.id), v = parseFloat(e.target.value);
   if (isNaN(v) || v < 0) { e.target.value = it[f] ?? ''; return; }
-  it[f] = v; save();
+  it[f] = v; persist(it.id);
   const low = statsFor(it).low;
   if (f === 'unitPrice') e.target.classList.toggle('pricey', !!low && v > low.unitPrice);
   $('#planTotal').textContent = yen(planTotal(listRows())); // 入力欄のフォーカスを保つため全体再描画はしない
 });
 
 /* ========= 書き出し／読み込み ========= */
-$('#exportBtn').addEventListener('click', () => {
-  const blob = new Blob([JSON.stringify(state, null, 2)], { type: 'application/json' });
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob); a.download = `supply-${today()}.json`; a.click(); URL.revokeObjectURL(a.href);
+$('#exportBtn').addEventListener('click', async () => {
+  const text = JSON.stringify({ version: 2, items: state.items }, null, 2), filename = `supply-${today()}.json`;
+  try {
+    if (downloads) await downloads.save({ filename, data: text });
+    else { // Claude の外（ファイルを直接開いた場合）
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(new Blob([text], { type: 'application/json' })); a.download = filename; a.click(); URL.revokeObjectURL(a.href);
+    }
+  } catch (err) { if (!err || err.code !== 'declined') toast('書き出せませんでした'); }
 });
+function normalizeImport(d) {
+  if (!d || !Array.isArray(d.items)) throw new Error('形式が違います');
+  const legacy = Array.isArray(d.purchases) ? d.purchases : [];
+  return d.items.filter(i => i && i.name).map(i => ({
+    id: String(i.id || uid()), name: String(i.name), category: i.category || '', place: i.place || '',
+    unitPrice: i.unitPrice ?? null, qty: i.qty ?? 1, cycleUnit: i.cycleUnit || 'none', cycleN: i.cycleN || 1,
+    onList: !!i.onList, skipDate: i.skipDate || null,
+    purchases: [...(i.purchases || []), ...legacy.filter(p => p.itemId === i.id)].map(p => ({ id: String(p.id || uid()), date: p.date, place: p.place || '', unitPrice: +p.unitPrice, qty: +p.qty })),
+  }));
+}
 $('#importFile').addEventListener('change', async e => {
   const file = e.target.files[0]; e.target.value = ''; if (!file) return;
   try {
-    const d = JSON.parse(await file.text());
-    if (!Array.isArray(d.items) || !Array.isArray(d.purchases)) throw new Error('形式が違います');
-    if (!confirm('現在のデータを、読み込んだデータで置き換えます。よろしいですか？')) return;
-    state = { ui: {}, ...d }; save(); render();
-  } catch (err) { alert('読み込めませんでした：' + err.message); }
+    const items = normalizeImport(JSON.parse(await file.text()));
+    if (!(await askConfirm(`現在のデータを、読み込んだ ${items.length} 品目で置き換えます。よろしいですか？`, '置き換える'))) return;
+    [...state.items].forEach(i => removeItem(i.id));
+    state.items = items; items.forEach(i => persist(i.id)); render(); toast('読み込みました');
+  } catch (err) { toast('読み込めませんでした：' + err.message); }
 });
 
 /* ========= サンプルデータ ========= */
@@ -614,22 +666,41 @@ function loadSample() {
     ['ゴミ袋', '日用品', ['ホームセンター', 'ドラッグストア'], 298, 1, 'month', 3],
   ];
   const days = { day: 1, week: 7, month: 30, year: 365 }, t = today();
-  state = { items: [], purchases: [], ui: state.ui };
   for (const [name, category, places, base, qty, unit, n] of defs) {
-    const item = { id: uid(), name, category, place: places[0], unitPrice: base, qty, cycleUnit: unit, cycleN: n, onList: false, skipDate: null };
-    state.items.push(item);
+    const item = { id: uid(), name, category, place: places[0], unitPrice: base, qty, cycleUnit: unit, cycleN: n, onList: false, skipDate: null, purchases: [] };
     const step = days[unit] * n;
     let ago = Math.round(step * (0.5 + rnd() * 0.9));
     while (ago < 150) {
-      state.purchases.push({ id: uid(), itemId: item.id, date: addUnits(t, -ago, 'day'), place: places[Math.floor(rnd() * places.length)],
-        unitPrice: Math.round(base * (0.82 + rnd() * 0.36)), qty });
+      item.purchases.push({ id: uid(), date: addUnits(t, -ago, 'day'), place: places[Math.floor(rnd() * places.length)], unitPrice: Math.round(base * (0.82 + rnd() * 0.36)), qty });
       ago += Math.max(1, Math.round(step * (0.85 + rnd() * 0.3)));
     }
+    state.items.push(item); persist(item.id);
   }
-  save(); render();
+  render();
 }
 
-render();
+/* ========= 起動 ========= */
+function inlineEditing() { const a = document.activeElement; return !!(a && a.dataset && a.dataset.field); }
+function applyItems(docs) {
+  state.items = docs; rebuild(); loaded = true;
+  if (!inlineEditing()) render();
+  if (histDlg.open) renderHist();
+}
+async function start() {
+  render();
+  try { downloads = window.claude ? await window.claude.use('downloads') : null; } catch (e) { downloads = null; }
+  if (!downloads && window.claude) $('#exportBtn').hidden = true;
+  try { db = window.claude ? await window.claude.use('db') : null; } catch (e) { db = null; }
+  if (!db) { // Claude に保存できない（ファイルを直接開いた／未サインイン）場合はこの端末に保存
+    try { const d = JSON.parse(localStorage.getItem(LS_DATA)); if (d && Array.isArray(d.items)) state.items = d.items; } catch (e) { /* 空で開始 */ }
+    setSync('保存先：この端末のみ'); applyItems(state.items); return;
+  }
+  setSync('保存先：Claude');
+  const timer = setTimeout(() => setSync('接続に時間がかかっています。表示が古い可能性があります', true), 10000);
+  db.collection('items').onSnapshot(snap => {
+    if (!snap.metadata.fromCache) { clearTimeout(timer); setSync('保存先：Claude'); }
+    applyItems(snap.docs.map(d => ({ purchases: [], ...JSON.parse(JSON.stringify(d.data())), id: d.id })));
+  }, err => { clearTimeout(timer); setSync('Claude に接続できません（' + ((err && err.code) || 'error') + '）', true); applyItems(state.items); });
+}
+start();
 </script>
-</body>
-</html>
