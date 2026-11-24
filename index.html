@@ -79,6 +79,7 @@ th.sticky{background:var(--head);z-index:2}
 .period button:first-child{border-radius:8px 0 0 8px}.period button:last-child{border-radius:0 8px 8px 0}
 .period button[aria-pressed=true]{background:var(--accent);color:var(--accent-text);border-color:var(--accent)}
 .range-label{font-weight:700;font-size:16px;min-width:11em;text-align:center}
+.nav{display:flex;align-items:center;gap:8px}
 .total-big{font-size:22px;font-weight:700}
 dialog{border:1px solid var(--line);border-radius:14px;background:var(--surface);color:var(--text);padding:0;width:min(560px,94vw);box-shadow:0 10px 40px rgba(0,0,0,.3)}
 dialog::backdrop{background:rgba(0,0,0,.45)}
@@ -167,6 +168,14 @@ tr.best td{background:var(--good-bg)}
   .card-table tbody td.pk{position:absolute;left:12px;top:12px;width:20px;height:28px;display:flex;align-items:center;z-index:2}
   .card-table tbody td.pk input{width:20px;height:20px;min-width:0;padding:0;margin:0;flex:none}
   .card-table tbody tr.best{background:var(--good-bg)}
+}
+.m-total{display:none}
+@media (max-width:700px){
+  .card-table td.name .m-total{display:inline;font-weight:700;font-size:15px;flex:none}
+  .stats-grid{gap:12px}
+  .bar .nav{order:3;flex:1 1 100%;justify-content:space-between}
+  .bar .today-btn{margin-left:auto}
+  .bar .range-label{min-width:0;flex:1;text-align:center;font-size:15px}
 }
 .sync{font-size:12px;color:var(--muted)}
 .sync.bad{color:var(--warn)}
@@ -632,13 +641,15 @@ function renderStats() {
   const slices = [...catSum].map(([name, value]) => ({ name, value, color: PALETTE[allCats.indexOf(name) % PALETTE.length] })).filter(sl => sl.value > 0).sort((a, b) => b.value - a.value);
   const pb = (k, l) => `<button data-period="${k}" aria-pressed="${ui.period === k}">${l}</button>`;
   const itemRows = [...itemAgg.values()].sort((a, b) => b.sum - a.sum).map(a => `<tr>
-    <td class="name">${esc(a.it.name)}</td><td>${esc(a.it.category) || '—'}</td><td class="r">${a.count}</td><td class="r">${fmtNum(a.qty)}</td>
-    <td class="r"><b>${yen(a.sum)}</b></td><td class="r">${yen(a.sum / a.qty)}</td><td>${esc([...a.places].join('、'))}</td><td>${fmtDate(a.last)}</td></tr>`).join('');
+    <td class="name"><span class="nm">${esc(a.it.name)}</span><span class="m-total">${yen(a.sum)}</span></td>
+    <td data-l="カテゴリ">${esc(a.it.category) || '—'}</td><td class="r" data-l="購入回数">${a.count}</td><td class="r" data-l="数量">${fmtNum(a.qty)}</td>
+    <td class="r m-hide" data-l="合計金額"><b>${yen(a.sum)}</b></td><td class="r" data-l="平均単価">${yen(a.sum / a.qty)}</td>
+    <td data-l="購入場所">${esc([...a.places].join('、'))}</td><td data-l="最終購入日">${fmtDate(a.last)}</td></tr>`).join('');
   app.innerHTML = `
     <div class="bar">
       <div class="period">${pb('day', '日')}${pb('week', '週')}${pb('month', '月')}${pb('year', '年')}</div>
-      <button class="btn" data-nav="-1">◀</button><span class="range-label">${label}</span><button class="btn" data-nav="1">▶</button>
-      <button class="btn sm" data-nav="0">今日</button>
+      <div class="nav"><button class="btn" data-nav="-1" aria-label="前へ">◀</button><span class="range-label">${label}</span><button class="btn" data-nav="1" aria-label="次へ">▶</button></div>
+      <button class="btn sm today-btn" data-nav="0">今日</button>
     </div>
     <div class="stats-grid">
       <section class="card pie-wrap">
@@ -647,7 +658,7 @@ function renderStats() {
         ${slices.length && total > 0 ? pieSvg(slices, total) + `<div class="legend">${slices.map(sl => `<div><i style="background:${sl.color}"></i>${esc(sl.name)}<span class="v">${yen(sl.value)}（${(sl.value / total * 100).toFixed(1)}%）</span></div>`).join('')}</div>` : '<p class="muted">この期間の購入はありません</p>'}
       </section>
       <section class="card">
-        <div class="scroll"><table>
+        <div class="scroll"><table class="card-table">
           <thead><tr><th>品名</th><th>カテゴリ</th><th class="r">購入回数</th><th class="r">数量</th><th class="r">合計金額</th><th class="r">平均単価</th><th>購入場所</th><th>最終購入日</th></tr></thead>
           <tbody>${itemRows || `<tr><td colspan="8" class="empty">この期間の購入はありません</td></tr>`}</tbody></table></div>
       </section>
