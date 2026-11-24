@@ -159,13 +159,13 @@ tr.best td{background:var(--good-bg)}
   .card-table tbody tr:last-child{border-bottom:0}
   .card-table tbody td{display:block;padding:0;border:0;white-space:normal;font-size:12px;text-align:left;min-width:0;overflow-wrap:anywhere;background:none}
   .card-table td[data-l]::before{content:attr(data-l);display:block;font-size:10px;color:var(--muted);line-height:1.3}
-  .card-table tbody td.name{grid-column:1/-1;display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:15px;position:static;z-index:auto}
+  .card-table tbody td.name{grid-column:1/-1;display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:15px;position:static;z-index:auto;min-height:28px}
   .card-table td.name .nm{min-width:0}
   .card-table td.m-hide,.card-table td.pk:empty{display:none}
   .card-table tbody td.acts{grid-column:1/-1;display:flex;flex-wrap:wrap;gap:6px;margin-top:2px}
   .card-table tr.pickable td.name{padding-left:28px}
-  .card-table tbody td.pk{position:absolute;left:12px;top:11px;z-index:2}
-  .card-table tbody td.pk input{width:18px;height:18px}
+  .card-table tbody td.pk{position:absolute;left:12px;top:12px;width:20px;height:28px;display:flex;align-items:center;z-index:2}
+  .card-table tbody td.pk input{width:20px;height:20px;min-width:0;padding:0;margin:0;flex:none}
   .card-table tbody tr.best{background:var(--good-bg)}
 }
 .sync{font-size:12px;color:var(--muted)}
