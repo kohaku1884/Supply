@@ -122,6 +122,34 @@ td.name .linkish{cursor:pointer;border-bottom:1px dashed var(--muted)}
 tr.best td{background:var(--good-bg)}
 .badge{display:inline-block;font-size:11px;font-weight:600;border-radius:999px;padding:0 7px;margin-left:6px;background:var(--good);color:var(--bg)}
 .sale{display:inline-block;font-size:11px;font-weight:600;border-radius:999px;padding:0 6px;margin-left:4px;background:var(--warn-bg);color:var(--warn);vertical-align:middle}
+.m-actions{display:none}
+@media (max-width:700px){
+  h1{font-size:15px}
+  header.top{gap:6px 10px}
+  .tabs{order:3;flex:1 1 100%}
+  .tabs button{flex:1;white-space:nowrap;padding:6px 2px;font-size:13px}
+  .tools{margin-left:auto}
+  main{padding-top:12px}
+  .totals{gap:8px}.totals section{padding:8px 12px}.totals h3{margin-bottom:4px}.totals ul{gap:3px}.totals li{font-size:12px}.totals li .bar-t{height:6px}
+  .bar{gap:6px 10px}
+  .list-table,.list-table tbody{display:block}
+  .list-table thead{display:none}
+  .list-table .scroll,.scroll:has(.list-table){overflow-x:visible}
+  .list-table tr[data-id]{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:4px 8px;padding:8px 12px 10px;border-bottom:1px solid var(--line);line-height:1.3}
+  .list-table tr[data-id] td{display:block;padding:0;border:0;white-space:normal;font-size:12px;text-align:left;min-width:0;overflow-wrap:anywhere}
+  .list-table tr[data-id] td.m-hide{display:none}
+  .list-table tr[data-id] td[data-l]::before{content:attr(data-l);display:block;font-size:10px;color:var(--muted);line-height:1.3}
+  .list-table tr[data-id] td.name{grid-column:1/-1;order:-1;display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:15px;position:static;background:none}
+  .list-table td.name .nm{min-width:0;overflow-wrap:anywhere}
+  .m-actions{display:flex;gap:4px;flex:none}
+  .list-table td input.num,.list-table td input.qty{width:100%;font-size:12px;padding:2px 6px}
+  .list-table td[data-f=reg]{grid-column:span 2}
+  .list-table tr.group,.list-table tr.group td{display:block}
+  .list-table td[data-f=price]{order:1}.list-table td[data-f=qty]{order:2}.list-table td[data-f=cycle]{order:3}
+  .list-table td[data-f=cat]{order:4}.list-table td[data-f=place]{order:5}.list-table td[data-f=elapsed]{order:6}
+  .list-table td[data-f=lastdate]{order:7}.list-table td[data-f=lastprice]{order:8}.list-table td[data-f=lastplace]{order:9}
+  .list-table td[data-f=low]{order:10}.list-table td[data-f=lowplace]{order:11}.list-table td[data-f=lowdate]{order:12}.list-table td[data-f=reg]{order:13}
+}
 .sync{font-size:12px;color:var(--muted)}
 .sync.bad{color:var(--warn)}
 .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(16px + env(safe-area-inset-bottom,0px));background:var(--text);color:var(--bg);padding:8px 16px;border-radius:8px;z-index:50;max-width:90vw}
@@ -391,24 +419,27 @@ function renderList() {
     const nextTxt = r.due ? `<div class="small ${r.isDue ? 'warn' : 'muted'}">次回 ${fmtDate(r.due).slice(5)}</div>` : '';
     const elapsed = r.elapsed == null ? '—'
       : `<span class="${r.isDue ? 'warn' : ''}">${r.elapsed}日</span>`;
+    const lowSale = low && low.sale ? '<span class="sale">セール</span>' : '', lastSale = last && last.sale ? '<span class="sale">セール</span>' : '';
+    const buyBtn = `<button class="btn primary sm" data-act="buy" data-id="${item.id}">購入</button>`;
+    const editBtn = `<button class="btn sm" data-act="edit" data-id="${item.id}">編集</button>`;
+    const delBtn = `<button class="btn sm" data-act="skip" data-id="${item.id}" title="購入リストから削除します（品目は品目リストに残ります。サイクル品は次の周期でまた自動で載ります）">削除</button>`;
     return `<tr data-id="${item.id}">
-      <td><button class="btn primary sm" data-act="buy" data-id="${item.id}">購入</button></td>
-      <td class="name sticky"><span class="linkish" data-act="edit" data-id="${item.id}" title="クリックで品名・カテゴリなどを編集">${esc(item.name)}</span>${r.isDue ? '<span class="tag due">サイクル</span>' : ''}</td>
-      <td class="r"><input class="num ${pricey ? 'pricey' : ''}" type="number" min="0" step="any" data-field="unitPrice" data-id="${item.id}" value="${item.unitPrice ?? ''}" title="${pricey ? `最安値より +${fmtNum(item.unitPrice - low.unitPrice)}円` : ''}"></td>
-      <td class="r"><input class="qty" type="number" min="0" step="any" data-field="qty" data-id="${item.id}" value="${item.qty ?? 1}"></td>
-      <td>${esc(item.category) || '—'}</td>
-      <td>${esc(item.place) || '—'}</td>
-      <td>${cycleLabel(item)}${nextTxt}</td>
-      <td>${fmtDate(last && last.date)}</td>
-      <td class="r">${elapsed}</td>
-      <td class="r">${yen(last && last.unitPrice)}${last && last.sale ? '<span class="sale">セール</span>' : ''}</td>
-      <td>${esc(last && last.place) || '—'}</td>
-      <td class="r">${low ? `<span class="good">${yen(low.unitPrice)}</span>${low.sale ? '<span class="sale">セール</span>' : ''}` : '—'}</td>
-      <td>${esc(low && low.place) || '—'}</td>
-      <td>${fmtDate(low && low.date)}</td>
-      <td class="r">${regCell(st.lowReg)}</td>
-      <td><button class="btn sm" data-act="edit" data-id="${item.id}">編集</button>
-          <button class="btn sm" data-act="skip" data-id="${item.id}" title="購入リストから削除します（品目は品目リストに残ります。サイクル品は次の周期でまた自動で載ります）">削除</button></td>
+      <td class="m-hide">${buyBtn}</td>
+      <td class="name sticky"><span class="nm"><span class="linkish" data-act="edit" data-id="${item.id}" title="クリックで品名・カテゴリなどを編集">${esc(item.name)}</span>${r.isDue ? '<span class="tag due">サイクル</span>' : ''}</span><span class="m-actions">${buyBtn}${editBtn}${delBtn}</span></td>
+      <td class="r" data-f="price" data-l="単価"><input class="num ${pricey ? 'pricey' : ''}" type="number" min="0" step="any" data-field="unitPrice" data-id="${item.id}" value="${item.unitPrice ?? ''}" title="${pricey ? `最安値より +${fmtNum(item.unitPrice - low.unitPrice)}円` : ''}"></td>
+      <td class="r" data-f="qty" data-l="数量"><input class="qty" type="number" min="0" step="any" data-field="qty" data-id="${item.id}" value="${item.qty ?? 1}"></td>
+      <td data-f="cat" data-l="カテゴリ">${esc(item.category) || '—'}</td>
+      <td data-f="place" data-l="購入場所">${esc(item.place) || '—'}</td>
+      <td data-f="cycle" data-l="購入サイクル">${cycleLabel(item)}${nextTxt}</td>
+      <td data-f="lastdate" data-l="前回購入日">${fmtDate(last && last.date)}</td>
+      <td class="r" data-f="elapsed" data-l="経過日数">${elapsed}</td>
+      <td class="r" data-f="lastprice" data-l="前回購入価格">${yen(last && last.unitPrice)}${lastSale}</td>
+      <td data-f="lastplace" data-l="前回購入場所">${esc(last && last.place) || '—'}</td>
+      <td class="r" data-f="low" data-l="最安値">${low ? `<span class="good">${yen(low.unitPrice)}</span>${lowSale}` : '—'}</td>
+      <td data-f="lowplace" data-l="最安値の場所">${esc(low && low.place) || '—'}</td>
+      <td data-f="lowdate" data-l="最安値の日">${fmtDate(low && low.date)}</td>
+      <td class="r" data-f="reg" data-l="セール除く最安値">${regCell(st.lowReg)}</td>
+      <td class="m-hide">${editBtn} ${delBtn}</td>
     </tr>`;
   };
   const COLS = 16;
@@ -434,7 +465,7 @@ function renderList() {
     </div>
     <div class="totals" id="listTotals">${totalsHtml(rows)}</div>
     <div class="card">
-      <div class="scroll"><table>
+      <div class="scroll"><table class="list-table">
         <thead><tr><th></th>${th('name', '品名', 'sticky')}${th('price', '単価', 'r')}<th class="r">数量</th>${th('category', 'カテゴリ')}${th('place', '購入場所')}
           ${th('next', '購入サイクル')}${th('last', '前回購入日')}${th('elapsed', '経過日数', 'r')}${th('lastPrice', '前回購入価格', 'r')}<th>前回購入場所</th>
           ${th('low', '最安値', 'r')}<th>最安値の購入場所</th><th>最安値の購入日</th><th class="r">セール除く最安値</th><th></th></tr></thead>
