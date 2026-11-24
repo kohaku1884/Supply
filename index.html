@@ -243,7 +243,7 @@ tr.best td{background:var(--good-bg)}
     </div>
     <div class="actions">
       <button type="button" class="btn" data-close>キャンセル</button>
-      <button class="btn primary" value="ok">記録する</button>
+      <button class="btn primary" value="ok" id="buySubmit">記録する</button>
     </div>
   </form>
 </dialog>
@@ -734,22 +734,31 @@ itemForm.addEventListener('submit', ev => {
   persist(id); render();
 });
 
-function openBuyDlg(id, mode) { // mode: 'list'(リストから購入) | 'direct' | 'past'
+function openBuyDlg(id, mode, pid) { // mode: 'list'(リストから購入) | 'direct' | 'past'(過去分の追加) | 'edit'(履歴の編集)
   const it = getItem(id), st = statsFor(it);
-  buyCtx = { id, mode };
-  $('#buyDlgTitle').textContent = `${mode === 'past' ? '過去の購入を追加' : '購入を記録'}：${it.name}`;
-  buyForm.date.value = today(); buyForm.date.max = today();
-  buyForm.place.value = it.place || (st.last && st.last.place) || '';
-  buyForm.unitPrice.value = it.unitPrice ?? ''; buyForm.qty.value = it.qty ?? 1; buyForm.sale.checked = false;
-  $('#buyRef').textContent = st.last ? `前回：${fmtDate(st.last.date)} ${st.last.place} ${yen(st.last.unitPrice)}` : '購入履歴はまだありません';
+  buyCtx = { id, mode, pid: pid || null };
+  const title = { past: '過去の購入を追加', edit: '購入記録を編集' }[mode] || '購入を記録';
+  $('#buyDlgTitle').textContent = `${title}：${it.name}`;
+  $('#buySubmit').textContent = mode === 'edit' ? '保存する' : '記録する';
+  buyForm.date.max = today();
+  if (mode === 'edit') {
+    const p = it.purchases.find(x => x.id === pid);
+    buyForm.date.value = p.date; buyForm.place.value = p.place; buyForm.unitPrice.value = p.unitPrice; buyForm.qty.value = p.qty; buyForm.sale.checked = !!p.sale;
+    $('#buyRef').textContent = '履歴の内容を修正します（品目の登録内容は変わりません）';
+  } else {
+    buyForm.date.value = today();
+    buyForm.place.value = it.place || (st.last && st.last.place) || '';
+    buyForm.unitPrice.value = it.unitPrice ?? ''; buyForm.qty.value = it.qty ?? 1; buyForm.sale.checked = false;
+    $('#buyRef').textContent = st.last ? `前回：${fmtDate(st.last.date)} ${st.last.place} ${yen(st.last.unitPrice)}` : '購入履歴はまだありません';
+  }
   updateBuyCompare(); buyDlg.showModal();
 }
 function updateBuyCompare() {
-  const low = statsFor(getItem(buyCtx.id)).low, el = $('#buyCompare');
+  const src = getItem(buyCtx.id), others = buyCtx.pid ? { ...src, purchases: src.purchases.filter(x => x.id !== buyCtx.pid) } : src;
+  const { low, lowReg: reg } = statsFor(others), el = $('#buyCompare');
   const v = parseFloat(buyForm.unitPrice.value);
   el.className = 'hint';
   if (!low) { el.textContent = ''; return; }
-  const reg = statsFor(getItem(buyCtx.id)).lowReg;
   const base = `最安値：${yen(low.unitPrice)}（${low.place}・${fmtDate(low.date)}）` + (reg && reg !== low ? ` ／ セール除く最安値：${yen(reg.unitPrice)}（${reg.place}・${fmtDate(reg.date)}）` : '');
   if (isNaN(v)) el.textContent = base;
   else if (v < low.unitPrice) { el.textContent = `${base} → 最安値を更新します`; el.className = 'hint good'; }
@@ -762,6 +771,11 @@ buyForm.addEventListener('submit', ev => {
   const f = buyForm, sale = f.sale.checked, unitPrice = parseFloat(f.unitPrice.value), qty = parseFloat(f.qty.value), place = f.place.value.trim();
   if (!f.date.value || !place || isNaN(unitPrice) || isNaN(qty)) return;
   const it = getItem(buyCtx.id);
+  if (buyCtx.mode === 'edit') { // 履歴の修正：品目側の初期値やリスト状態は変えない
+    const p = it.purchases.find(x => x.id === buyCtx.pid);
+    if (p) Object.assign(p, { date: f.date.value, place, unitPrice, qty, sale });
+    persist(it.id); render(); if (histDlg.open) renderHist(); toast('購入記録を更新しました'); return;
+  }
   (it.purchases = it.purchases || []).push({ id: uid(), date: f.date.value, place, unitPrice, qty, sale });
   if (buyCtx.mode !== 'past') { // 通常の購入：リストから外し、次回の初期値を今回の内容にする
     it.onList = false; it.unitPrice = unitPrice; it.qty = qty; it.place = place;
@@ -774,11 +788,15 @@ function renderHist() {
   const st = statsFor(it);
   $('#histTitle').textContent = `購入履歴：${it.name}`;
   const ps = [...(it.purchases || [])].sort((a, b) => b.date.localeCompare(a.date));
-  $('#histBody').innerHTML = ps.length ? `<table><thead><tr><th>購入日</th><th>購入場所</th><th class="r">単価</th><th class="r">数量</th><th class="r">小計</th><th>セール</th><th></th></tr></thead><tbody>${
-    ps.map(p => `<tr><td>${fmtDate(p.date)}</td><td>${esc(p.place)}</td><td class="r">${yen(p.unitPrice)}${st.low && st.low.id === p.id ? ' <span class="good" title="最安値">★</span>' : ''}</td>
-      <td class="r">${fmtNum(p.qty)}</td><td class="r">${yen(p.unitPrice * p.qty)}</td>
-      <td><input type="checkbox" data-sale="${p.id}" ${p.sale ? 'checked' : ''} aria-label="セール品"></td>
-      <td><button class="btn sm danger" data-delp="${p.id}">削除</button></td></tr>`).join('')}</tbody></table>` : '<p class="empty">履歴はまだありません</p>';
+  const rows = ps.map(p => {
+    const editBtn = `<button class="btn sm" data-editp="${p.id}">編集</button>`, delBtn = `<button class="btn sm danger" data-delp="${p.id}">削除</button>`;
+    return `<tr><td class="name"><span class="nm">${fmtDate(p.date)}</span><span class="m-actions">${editBtn}${delBtn}</span></td>
+      <td data-l="購入場所">${esc(p.place)}</td><td class="r" data-l="単価">${yen(p.unitPrice)}${st.low && st.low.id === p.id ? ' <span class="good" title="最安値">★</span>' : ''}</td>
+      <td class="r" data-l="数量">${fmtNum(p.qty)}</td><td class="r" data-l="小計">${yen(p.unitPrice * p.qty)}</td>
+      <td data-l="セール"><input type="checkbox" data-sale="${p.id}" ${p.sale ? 'checked' : ''} aria-label="セール品"></td>
+      <td class="m-hide">${editBtn} ${delBtn}</td></tr>`;
+  }).join('');
+  $('#histBody').innerHTML = ps.length ? `<table class="card-table"><thead><tr><th>購入日</th><th>購入場所</th><th class="r">単価</th><th class="r">数量</th><th class="r">小計</th><th>セール</th><th></th></tr></thead><tbody>${rows}</tbody></table>` : '<p class="empty">履歴はまだありません</p>';
 }
 $('#histBody').addEventListener('change', e => {
   const pid = e.target.dataset.sale; if (!pid) return;
@@ -786,6 +804,7 @@ $('#histBody').addEventListener('change', e => {
   p.sale = e.target.checked; persist(it.id); render();
 });
 $('#histBody').addEventListener('click', async e => {
+  const eid = e.target.dataset.editp; if (eid) { openBuyDlg(histId, 'edit', eid); return; }
   const pid = e.target.dataset.delp; if (!pid) return;
   if (!(await askConfirm('この購入記録を削除しますか？', '削除'))) return;
   const it = getItem(histId); it.purchases = it.purchases.filter(p => p.id !== pid);
