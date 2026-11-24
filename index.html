@@ -122,6 +122,7 @@ td.name .linkish{cursor:pointer;border-bottom:1px dashed var(--muted)}
 tr.best td{background:var(--good-bg)}
 .badge{display:inline-block;font-size:11px;font-weight:600;border-radius:999px;padding:0 7px;margin-left:6px;background:var(--good);color:var(--bg)}
 .sale{display:inline-block;font-size:11px;font-weight:600;border-radius:999px;padding:0 6px;margin-left:4px;background:var(--warn-bg);color:var(--warn);vertical-align:middle}
+[hidden]{display:none!important}
 .m-actions{display:none}
 @media (max-width:700px){
   h1{font-size:15px}
@@ -310,11 +311,19 @@ function addUnits(iso, n, unit) {
 const DEFAULT_CATS = ['食品', '飲料', '調味料', '日用品', '洗剤・衛生', 'ペット', 'その他'];
 const DEFAULT_PLACES = ['コンビニ', 'スーパー', 'ドラッグストア', 'ホームセンター', 'ネット通販', 'ファミリーマート', 'セブン-イレブン', 'ローソン'];
 
+const SORTS_KEYS = { name: 1, category: 1, place: 1, price: 1, elapsed: 1, last: 1, lastPrice: 1, low: 1, next: 1 };
 const LS_DATA = 'supply-tracker-v2', LS_UI = 'supply-tracker-ui';
 let state = { items: [], purchases: [] };           // items は購入履歴(purchases)を内側に持つ。state.purchases は集計用の平坦な写し
 const ui = Object.assign({ tab: 'list', sortKey: 'category', sortDir: 1, group: 'none', period: 'month', anchor: today() }, (() => {
   try { return JSON.parse(localStorage.getItem(LS_UI)) || {}; } catch (e) { return {}; }
 })());
+(function sanitizeUi() { // 壊れた保存値で描画が止まらないようにする
+  if (!['list', 'items', 'compare', 'stats'].includes(ui.tab)) ui.tab = 'list';
+  if (!['none', 'category', 'place'].includes(ui.group)) ui.group = 'none';
+  if (!['day', 'week', 'month', 'year'].includes(ui.period)) ui.period = 'month';
+  if (ui.sortDir !== 1 && ui.sortDir !== -1) ui.sortDir = 1;
+  if (!Object.prototype.hasOwnProperty.call(SORTS_KEYS, ui.sortKey)) ui.sortKey = 'category';
+})();
 function saveUi() { try { localStorage.setItem(LS_UI, JSON.stringify({ tab: ui.tab, sortKey: ui.sortKey, sortDir: ui.sortDir, group: ui.group, period: ui.period })); } catch (e) { /* 保存できなくても動作する */ } }
 
 let db = null, downloads = null, loaded = false;
@@ -461,7 +470,7 @@ function renderList() {
   };
   const COLS = 16;
   let body = '';
-  if (!rows.length) body = `<tr><td colspan="${COLS}" class="empty">購入リストは空です。「品目・履歴」から品目をリストに追加できます。</td></tr>`;
+  if (!rows.length) body = `<tr><td colspan="${COLS}" class="empty">購入リストは空です。「品目リスト」から品目をリストに追加できます。</td></tr>`;
   else if (ui.group === 'none') body = rows.map(rowHtml).join('');
   else {
     const gk = ui.group, groups = new Map();
@@ -620,7 +629,7 @@ function renderStats() {
     itemAgg.set(it.id, a);
   }
   const allCats = [...new Set(state.items.map(i => i.category || '未設定'))].sort((a, b) => a.localeCompare(b, 'ja'));
-  const slices = [...catSum].map(([name, value]) => ({ name, value, color: PALETTE[allCats.indexOf(name) % PALETTE.length] })).sort((a, b) => b.value - a.value);
+  const slices = [...catSum].map(([name, value]) => ({ name, value, color: PALETTE[allCats.indexOf(name) % PALETTE.length] })).filter(sl => sl.value > 0).sort((a, b) => b.value - a.value);
   const pb = (k, l) => `<button data-period="${k}" aria-pressed="${ui.period === k}">${l}</button>`;
   const itemRows = [...itemAgg.values()].sort((a, b) => b.sum - a.sum).map(a => `<tr>
     <td class="name">${esc(a.it.name)}</td><td>${esc(a.it.category) || '—'}</td><td class="r">${a.count}</td><td class="r">${fmtNum(a.qty)}</td>
@@ -635,7 +644,7 @@ function renderStats() {
       <section class="card pie-wrap">
         <div class="muted small">カテゴリ別 購入価格</div>
         <div class="total-big">${yen(total)}</div>
-        ${slices.length ? pieSvg(slices, total) + `<div class="legend">${slices.map(sl => `<div><i style="background:${sl.color}"></i>${esc(sl.name)}<span class="v">${yen(sl.value)}（${(sl.value / total * 100).toFixed(1)}%）</span></div>`).join('')}</div>` : '<p class="muted">この期間の購入はありません</p>'}
+        ${slices.length && total > 0 ? pieSvg(slices, total) + `<div class="legend">${slices.map(sl => `<div><i style="background:${sl.color}"></i>${esc(sl.name)}<span class="v">${yen(sl.value)}（${(sl.value / total * 100).toFixed(1)}%）</span></div>`).join('')}</div>` : '<p class="muted">この期間の購入はありません</p>'}
       </section>
       <section class="card">
         <div class="scroll"><table>
@@ -867,13 +876,22 @@ $('#exportBtn').addEventListener('click', async () => {
 });
 function normalizeImport(d) {
   if (!d || !Array.isArray(d.items)) throw new Error('形式が違います');
+  const safeId = v => String(v ?? '').replace(/[^A-Za-z0-9_-]/g, '_').slice(0, 100) || uid();
+  const num = (v, def = null) => { const n = parseFloat(v); return Number.isFinite(n) && n >= 0 ? n : def; };
   const legacy = Array.isArray(d.purchases) ? d.purchases : [];
-  return d.items.filter(i => i && i.name).map(i => ({
-    id: String(i.id || uid()), name: String(i.name), category: i.category || '', place: i.place || '',
-    unitPrice: i.unitPrice ?? null, qty: i.qty ?? 1, cycleUnit: i.cycleUnit || 'none', cycleN: i.cycleN || 1,
-    onList: !!i.onList, skipDate: i.skipDate || null,
-    purchases: [...(i.purchases || []), ...legacy.filter(p => p.itemId === i.id)].map(p => ({ id: String(p.id || uid()), date: p.date, place: p.place || '', unitPrice: +p.unitPrice, qty: +p.qty, sale: !!p.sale })),
-  }));
+  const seen = new Set();
+  return d.items.filter(i => i && typeof i.name === 'string' && i.name.trim()).map(i => {
+    let id = safeId(i.id); while (seen.has(id)) id = uid(); seen.add(id);
+    const raw = [...(Array.isArray(i.purchases) ? i.purchases : []), ...legacy.filter(p => p && p.itemId === i.id)];
+    const purchases = raw.filter(p => p && /^\d{4}-\d{2}-\d{2}$/.test(p.date) && num(p.unitPrice) !== null && num(p.qty) !== null)
+      .map(p => ({ id: safeId(p.id), date: p.date, place: String(p.place || ''), unitPrice: num(p.unitPrice), qty: num(p.qty), sale: !!p.sale }));
+    return {
+      id, name: i.name.trim(), category: String(i.category || ''), place: String(i.place || ''),
+      unitPrice: num(i.unitPrice), qty: num(i.qty, 1),
+      cycleUnit: ['day', 'week', 'month', 'year'].includes(i.cycleUnit) ? i.cycleUnit : 'none', cycleN: Math.max(1, parseInt(i.cycleN) || 1),
+      onList: !!i.onList, skipDate: /^\d{4}-\d{2}-\d{2}$/.test(i.skipDate || '') ? i.skipDate : null, purchases,
+    };
+  });
 }
 $('#importFile').addEventListener('change', async e => {
   const file = e.target.files[0]; e.target.value = ''; if (!file) return;
@@ -931,7 +949,10 @@ async function start() {
     setSync('保存先：この端末のみ'); applyItems(state.items); return;
   }
   setSync('保存先：Claude');
-  const timer = setTimeout(() => setSync('接続に時間がかかっています。表示が古い可能性があります', true), 10000);
+  const timer = setTimeout(() => {
+    setSync('接続に時間がかかっています。表示が古い可能性があります', true);
+    if (!loaded) app.innerHTML = '<div class="card empty">Claude のデータにまだ接続できていません。接続できると自動で表示されます。</div>';
+  }, 10000);
   db.collection('items').onSnapshot(snap => {
     if (!snap.metadata.fromCache) { clearTimeout(timer); setSync('保存先：Claude'); }
     applyItems(snap.docs.map(d => ({ purchases: [], ...JSON.parse(JSON.stringify(d.data())), id: d.id })));
