@@ -331,9 +331,10 @@ const ui = Object.assign({ tab: 'list', sortKey: 'category', sortDir: 1, group: 
   if (!['none', 'category', 'place'].includes(ui.group)) ui.group = 'none';
   if (!['day', 'week', 'month', 'year'].includes(ui.period)) ui.period = 'month';
   if (ui.sortDir !== 1 && ui.sortDir !== -1) ui.sortDir = 1;
+  if (typeof ui.itemCat !== 'string') ui.itemCat = '';
   if (!Object.prototype.hasOwnProperty.call(SORTS_KEYS, ui.sortKey)) ui.sortKey = 'category';
 })();
-function saveUi() { try { localStorage.setItem(LS_UI, JSON.stringify({ tab: ui.tab, sortKey: ui.sortKey, sortDir: ui.sortDir, group: ui.group, period: ui.period })); } catch (e) { /* 保存できなくても動作する */ } }
+function saveUi() { try { localStorage.setItem(LS_UI, JSON.stringify({ tab: ui.tab, sortKey: ui.sortKey, sortDir: ui.sortDir, group: ui.group, period: ui.period, itemCat: ui.itemCat })); } catch (e) { /* 保存できなくても動作する */ } }
 
 let db = null, downloads = null, loaded = false;
 function rebuild() { state.purchases = state.items.flatMap(it => (it.purchases || []).map(p => ({ ...p, itemId: it.id }))); }
@@ -533,7 +534,14 @@ function prefillFor(item) {
 function isInList(item, st) { const due = nextDue(item, st); return item.onList || !!(due && due <= today()); }
 function renderItems() {
   if (!state.items.length) { app.innerHTML = emptyState(); return; }
-  const items = [...state.items].sort((a, b) => (a.category || '').localeCompare(b.category || '', 'ja') || a.name.localeCompare(b.name, 'ja'));
+  const NONE = '__none';
+  const catCount = new Map();
+  for (const it of state.items) { const k = it.category || NONE; catCount.set(k, (catCount.get(k) || 0) + 1); }
+  const catKeys = [...catCount.keys()].sort((a, b) => (a === NONE) - (b === NONE) || a.localeCompare(b, 'ja'));
+  if (ui.itemCat && !catCount.has(ui.itemCat)) ui.itemCat = ''; // 該当する品目がなくなったカテゴリは解除
+  const items = state.items.filter(it => !ui.itemCat || (it.category || NONE) === ui.itemCat)
+    .sort((a, b) => (a.category || '').localeCompare(b.category || '', 'ja') || a.name.localeCompare(b.name, 'ja'));
+  const catOpts = `<option value="">すべて（${state.items.length}件）</option>` + catKeys.map(k => `<option value="${esc(k)}" ${ui.itemCat === k ? 'selected' : ''}>${k === NONE ? '未設定' : esc(k)}（${catCount.get(k)}件）</option>`).join('');
   const rows = items.map(item => {
     const st = statsFor(item), inList = isInList(item, st), last = st.last;
     const lastSale = last && last.sale ? '<span class="sale">セール</span>' : '', lowSale = st.low && st.low.sale ? '<span class="sale">セール</span>' : '';
@@ -552,6 +560,7 @@ function renderItems() {
   }).join('');
   app.innerHTML = `
     <div class="bar"><button class="btn primary" data-act="new">＋ 品目を追加</button>
+      <label>カテゴリ <select id="itemCat">${catOpts}</select></label>
       <button class="btn" data-act="bulkadd" id="bulkBtn" disabled>選択した品目を購入リストへ</button>
       <span class="muted small">場所・単価・数量は前回購入のデータが自動で入ります（追加時に編集もできます）</span></div>
     <div class="card"><div class="scroll"><table class="card-table">
@@ -883,6 +892,7 @@ app.addEventListener('click', async e => {
 app.addEventListener('change', e => {
   if (e.target.id === 'sortKey') { ui.sortKey = e.target.value; saveUi(); return render(); }
   if (e.target.id === 'groupBy') { ui.group = e.target.value; saveUi(); return render(); }
+  if (e.target.id === 'itemCat') { ui.itemCat = e.target.value; saveUi(); return render(); }
   const f = e.target.dataset.field; if (!f) return;
   const it = getItem(e.target.dataset.id), v = parseFloat(e.target.value);
   if (isNaN(v) || v < 0) { e.target.value = it[f] ?? ''; return; }
